@@ -475,48 +475,52 @@ const Portada = ({ onStart }: { onStart: () => void; key?: string }) => {
       exit={{ opacity: 0 }}
       className="min-h-screen bg-[#f3eee4] text-[#1f2a24]"
     >
-      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-6 pt-8 pb-10">
-        <header className="flex items-baseline justify-between border-b border-[#1f2a24] pb-3">
-          <span className="font-serif text-xl font-semibold tracking-tight">FotoFarma</span>
+      <div className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-6 pt-8 pb-8 sm:px-10 lg:px-16">
+        <header className="flex items-baseline justify-between gap-4 border-b border-[#1f2a24] pb-3">
+          <span className="font-serif text-xl font-semibold tracking-tight md:text-2xl">FotoFarma</span>
           <span className="text-[11px] uppercase tracking-[0.18em] text-[#5b6b61]">Recetario personal</span>
         </header>
 
-        <main className="flex flex-1 flex-col justify-center py-10">
-          <p className="font-serif text-6xl leading-none text-[#2f5d46]" aria-hidden="true">℞</p>
-          <h1 className="mt-5 font-serif text-[2.6rem] leading-[1.05] font-medium tracking-tight">
-            Tus medicinas,<br />a su hora.
-          </h1>
-          <p className="mt-5 text-[15px] leading-relaxed text-[#46534b]">
-            Toma una foto de tu receta y arma tu calendario de tomas. Todo se guarda en este teléfono; no necesitas cuenta.
-          </p>
+        <main className="mx-auto grid w-full max-w-xl flex-1 content-center gap-10 py-10 lg:max-w-none lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-24">
+          <section>
+            <p className="font-serif text-6xl leading-none text-[#2f5d46] lg:text-7xl" aria-hidden="true">℞</p>
+            <h1 className="mt-5 font-serif text-[2.6rem] leading-[1.05] font-medium tracking-tight sm:text-5xl lg:text-7xl">
+              Tus medicinas,<br />a su hora.
+            </h1>
+            <p className="mt-5 max-w-md text-[15px] leading-relaxed text-[#46534b] lg:text-base">
+              Toma una foto de tu receta y arma tu calendario de tomas. Todo se guarda en este dispositivo; no necesitas cuenta.
+            </p>
+          </section>
 
-          <ol className="mt-10 border-t border-[#cfc6b4]">
-            {PASOS.map(p => (
-              <li key={p.n} className="flex gap-4 border-b border-[#cfc6b4] py-4">
-                <span className="font-serif text-sm text-[#2f5d46] pt-0.5">{p.n}</span>
-                <div>
-                  <p className="font-semibold text-[15px]">{p.titulo}</p>
-                  <p className="text-sm text-[#5b6b61]">{p.texto}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
+          <section className="flex flex-col gap-8">
+            <ol className="border-t border-[#cfc6b4]">
+              {PASOS.map(p => (
+                <li key={p.n} className="grid grid-cols-[2rem_1fr] gap-2 border-b border-[#cfc6b4] py-4">
+                  <span className="font-serif text-sm text-[#2f5d46] pt-0.5">{p.n}</span>
+                  <div>
+                    <p className="font-semibold text-[15px]">{p.titulo}</p>
+                    <p className="text-sm text-[#5b6b61]">{p.texto}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+
+            <div className="space-y-4">
+              <button
+                onClick={onStart}
+                className="w-full rounded-md bg-[#2f5d46] py-4 text-[15px] font-semibold text-[#f3eee4] transition-colors hover:bg-[#264d3a] active:bg-[#1f4030]"
+              >
+                Empezar
+              </button>
+              <p className="text-center text-xs leading-relaxed text-[#5b6b61] lg:text-left">
+                FotoFarma no sustituye a tu médico ni a tu farmacéutico.{' '}
+                <button onClick={() => setShowTerms(true)} className="underline underline-offset-2 text-[#1f2a24]">
+                  Aviso legal
+                </button>
+              </p>
+            </div>
+          </section>
         </main>
-
-        <footer className="space-y-4">
-          <button
-            onClick={onStart}
-            className="w-full rounded-md bg-[#2f5d46] py-4 text-[15px] font-semibold text-[#f3eee4] transition-colors hover:bg-[#264d3a] active:bg-[#1f4030]"
-          >
-            Empezar
-          </button>
-          <p className="text-center text-xs leading-relaxed text-[#5b6b61]">
-            FotoFarma no sustituye a tu médico ni a tu farmacéutico.{' '}
-            <button onClick={() => setShowTerms(true)} className="underline underline-offset-2 text-[#1f2a24]">
-              Aviso legal
-            </button>
-          </p>
-        </footer>
       </div>
 
       <AnimatePresence>
@@ -1091,7 +1095,7 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="fixed inset-0 z-50 bg-black flex flex-col"
+      className="fixed inset-0 z-50 mx-auto w-full max-w-xl bg-black flex flex-col"
     >
       <div className="flex-1 relative">
         <img 
@@ -1625,7 +1629,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 selection:bg-emerald-100 selection:text-emerald-900">
+    <div className="min-h-screen bg-zinc-50 md:bg-zinc-200/60 font-sans text-zinc-900 selection:bg-emerald-100 selection:text-emerald-900">
       <AnimatePresence>
         {activeAlarm && (
           <AlarmOverlay 
@@ -1639,6 +1643,8 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* En pantallas grandes la app se muestra como una columna centrada */}
+      <div className={view === 'login' ? '' : 'mx-auto w-full max-w-xl min-h-screen md:border-x md:border-zinc-200/70 md:shadow-sm'}>
       <AnimatePresence mode="wait">
         {view === 'login' && <Portada key="login" onStart={() => { markStarted(); setView('dashboard'); }} />}
         {view === 'dashboard' && (
@@ -1658,6 +1664,7 @@ export default function App() {
         {view === 'gallery' && <GalleryView key="gallery" setView={setView} />}
         {view === 'preview' && <PreviewView key="preview" setView={setView} capturedImage={capturedImage} userSettings={userSettings} />}
       </AnimatePresence>
+      </div>
 
       {/* Settings Modal */}
       <AnimatePresence>
@@ -1722,7 +1729,7 @@ export default function App() {
       
       {/* Persist bottom navigation on dashboard/calendar/gallery */}
       {view !== 'login' && view !== 'camera' && view !== 'preview' && (
-        <nav className="fixed bottom-0 inset-x-0 bg-white/80 backdrop-blur-lg border-t border-zinc-100 p-4 pb-8 flex justify-around items-center z-40">
+        <nav className="fixed bottom-0 inset-x-0 mx-auto w-full max-w-xl bg-white/80 backdrop-blur-lg border-t border-zinc-100 p-4 pb-8 flex justify-around items-center z-40">
           <button onClick={() => setView('dashboard')} className={`p-2 transition-colors ${view === 'dashboard' ? 'text-emerald-600' : 'text-zinc-400'}`}>
             <User className="w-6 h-6" />
           </button>
