@@ -354,7 +354,7 @@ const Banda = ({ title, left, right, center = false, children }: { title: ReactN
     <span className="pointer-events-none absolute -bottom-32 left-1/4 h-56 w-56 rounded-full bg-brand-strong/30" />
     <div className={`relative mx-auto max-w-5xl ${PAD_X} pt-[max(16px,env(safe-area-inset-top))] pb-[clamp(64px,10vh,92px)]`}>
       <div className="flex min-h-14 items-center gap-3">
-        {left}
+        {left ?? (center && right ? <span className="w-11 shrink-0" aria-hidden="true" /> : null)}
         <h1 className={`min-w-0 flex-1 truncate font-semibold ${center ? 'text-center text-[clamp(1rem,2.2vmin,1.2rem)] uppercase tracking-wide' : 'text-[clamp(1.5rem,3.6vmin,2.1rem)] tracking-tight'}`}>
           {title}
         </h1>
@@ -794,11 +794,218 @@ const buscarFarmacias = async (lat: number, lon: number, radio: number): Promise
   throw ultimoError;
 };
 
+// --- Disponibilidad en cadenas (precio y existencia reales de sus tiendas en línea) ---
+// Farmacias del Ahorro se consulta directo (su servicio permite llamadas desde el navegador).
+// Similares y Benavides pasan por el intermediario de proxy/worker.js (VITE_PROXY_URL).
+const PROXY_URL = (import.meta.env.VITE_PROXY_URL || '').replace(/\/$/, '');
+
+// Capitales para buscar sucursales por estado cuando no se comparte la ubicación (Morelos primero)
+const ESTADOS: { nombre: string; lat: number; lon: number }[] = [
+  { nombre: 'Morelos', lat: 18.9218, lon: -99.2346 },
+  { nombre: 'Ciudad de México', lat: 19.4326, lon: -99.1332 },
+  { nombre: 'Estado de México', lat: 19.2826, lon: -99.6557 },
+  { nombre: 'Guerrero', lat: 17.5515, lon: -99.5006 },
+  { nombre: 'Puebla', lat: 19.0414, lon: -98.2063 },
+  { nombre: 'Aguascalientes', lat: 21.8818, lon: -102.2916 },
+  { nombre: 'Baja California', lat: 32.6245, lon: -115.4523 },
+  { nombre: 'Baja California Sur', lat: 24.1426, lon: -110.3128 },
+  { nombre: 'Campeche', lat: 19.8301, lon: -90.5349 },
+  { nombre: 'Chiapas', lat: 16.7521, lon: -93.1152 },
+  { nombre: 'Chihuahua', lat: 28.6353, lon: -106.0889 },
+  { nombre: 'Coahuila', lat: 25.4232, lon: -101.0053 },
+  { nombre: 'Colima', lat: 19.2452, lon: -103.7241 },
+  { nombre: 'Durango', lat: 24.0277, lon: -104.6532 },
+  { nombre: 'Guanajuato', lat: 21.019, lon: -101.2574 },
+  { nombre: 'Hidalgo', lat: 20.1011, lon: -98.7591 },
+  { nombre: 'Jalisco', lat: 20.6597, lon: -103.3496 },
+  { nombre: 'Michoacán', lat: 19.706, lon: -101.195 },
+  { nombre: 'Nayarit', lat: 21.5042, lon: -104.8946 },
+  { nombre: 'Nuevo León', lat: 25.6866, lon: -100.3161 },
+  { nombre: 'Oaxaca', lat: 17.0732, lon: -96.7266 },
+  { nombre: 'Querétaro', lat: 20.5888, lon: -100.3899 },
+  { nombre: 'Quintana Roo', lat: 18.5001, lon: -88.2961 },
+  { nombre: 'San Luis Potosí', lat: 22.1565, lon: -100.9855 },
+  { nombre: 'Sinaloa', lat: 24.8091, lon: -107.394 },
+  { nombre: 'Sonora', lat: 29.0729, lon: -110.9559 },
+  { nombre: 'Tabasco', lat: 17.9869, lon: -92.9303 },
+  { nombre: 'Tamaulipas', lat: 23.7369, lon: -99.1411 },
+  { nombre: 'Tlaxcala', lat: 19.3182, lon: -98.2375 },
+  { nombre: 'Veracruz', lat: 19.5438, lon: -96.9102 },
+  { nombre: 'Yucatán', lat: 20.9674, lon: -89.5926 },
+  { nombre: 'Zacatecas', lat: 22.7709, lon: -102.5832 },
+];
+
+interface ProductoCadena { id: string; nombre: string; precio: number | null; disponible: boolean; imagen: string | null; url: string }
+interface SucursalSimilares { id: string; nombre: string; direccion: string; estado?: string; lat: number; lon: number; distanciaKm: number; surte: boolean | null }
+
+const buscarAhorro = async (q: string, intento = 0): Promise<ProductoCadena[]> => {
+  try {
+    return await buscarAhorroUnaVez(q);
+  } catch (err) {
+    if (intento < 1) return buscarAhorro(q, intento + 1); // a veces tarda en responder la primera vez
+    throw err;
+  }
+};
+
+const buscarAhorroUnaVez = async (q: string): Promise<ProductoCadena[]> => {
+  const query = `{ products(search: ${JSON.stringify(q)}, pageSize: 3) { items { name sku stock_status url_key url_suffix small_image { url } price_range { minimum_price { final_price { value } } } } } }`;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 12000);
+  const r = await fetch('https://www.fahorro.com/graphql', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query }), signal: ctrl.signal }).finally(() => clearTimeout(t));
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const d = await r.json();
+  return (d.data?.products?.items || []).map((p: any) => ({
+    id: p.sku,
+    nombre: p.name,
+    precio: p.price_range?.minimum_price?.final_price?.value ?? null,
+    disponible: p.stock_status === 'IN_STOCK',
+    imagen: p.small_image?.url || null,
+    url: `https://www.fahorro.com/${p.url_key}${p.url_suffix || '.html'}`,
+  }));
+};
+
+const proxyGet = async (ruta: string) => {
+  const r = await fetch(`${PROXY_URL}${ruta}`);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+};
+
+const formatPrecio = (n: number | null) => (n == null ? '' : n.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' }));
+
+type Carga<T> = { estado: 'cargando' | 'listo' | 'error'; datos: T };
+
+const ProductoFila = ({ p }: { p: ProductoCadena; key?: string }) => (
+  <li className="flex items-center gap-3 py-3">
+    <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-canvas">
+      {p.imagen ? <img src={p.imagen} alt="" loading="lazy" className="h-full w-full object-contain" referrerPolicy="no-referrer" /> : <Pill className="h-5 w-5 text-faint" />}
+    </span>
+    <span className="min-w-0 flex-1">
+      <span className="line-clamp-2 text-sm font-medium leading-snug text-ink">{p.nombre}</span>
+      <span className="mt-0.5 flex items-center gap-2 text-sm">
+        {p.precio != null && <span className="font-semibold text-ink tabular-nums">{formatPrecio(p.precio)}</span>}
+        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${p.disponible ? 'bg-mint-soft text-mint-strong' : 'bg-bad-soft text-bad'}`}>{p.disponible ? 'Disponible' : 'Agotado'}</span>
+      </span>
+    </span>
+    <a href={p.url} target="_blank" rel="noopener noreferrer" aria-label={`Ver ${p.nombre} en la tienda`} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-canvas text-muted hover:text-brand">
+      <ChevronRight className="h-5 w-5" />
+    </a>
+  </li>
+);
+
+const CadenaTarjeta = ({ nombre, sitio, carga, children }: { nombre: string; sitio: string; carga: Carga<ProductoCadena[]>; children?: ReactNode }) => (
+  <div className="rounded-[22px] bg-card p-4 shadow-soft">
+    <div className="flex items-center justify-between gap-2">
+      <p className="flex items-center gap-2 font-semibold text-ink"><Store className="h-4 w-4 text-brand" /> {nombre}</p>
+      <span className="text-xs text-faint">{sitio}</span>
+    </div>
+    {carga.estado === 'cargando' && <div className="mt-3 h-14 animate-pulse rounded-xl bg-canvas" />}
+    {carga.estado === 'error' && <p className="mt-2 text-sm text-muted">No pudimos consultar esta tienda ahora.</p>}
+    {carga.estado === 'listo' && (carga.datos.length === 0
+      ? <p className="mt-2 text-sm text-muted">No lo encontramos en su catálogo.</p>
+      : <ul className="divide-y divide-line">{carga.datos.map(p => <ProductoFila key={p.id} p={p} />)}</ul>)}
+    {children}
+  </div>
+);
+
+const DisponibilidadCadenas = ({ med, coords, onUbicar }: { med: string; coords: { lat: number; lon: number } | null; onUbicar: () => void }) => {
+  const [estadoMx, setEstadoMx] = useState('Morelos');
+  const [ahorro, setAhorro] = useState<Carga<ProductoCadena[]>>({ estado: 'cargando', datos: [] });
+  const [similares, setSimilares] = useState<Carga<ProductoCadena[]>>({ estado: 'cargando', datos: [] });
+  const [benavides, setBenavides] = useState<Carga<ProductoCadena[]>>({ estado: 'cargando', datos: [] });
+  const [sucursales, setSucursales] = useState<Carga<SucursalSimilares[]>>({ estado: 'cargando', datos: [] });
+
+  // Buscar en cada cadena (con una pequeña espera mientras se escribe)
+  useEffect(() => {
+    if (med.length < 3) return;
+    let vivo = true;
+    const t = setTimeout(() => {
+      const cargar = <T,>(fn: () => Promise<T>, set: (c: Carga<T>) => void, vacio: T) => {
+        set({ estado: 'cargando', datos: vacio });
+        fn().then(d => vivo && set({ estado: 'listo', datos: d })).catch(() => vivo && set({ estado: 'error', datos: vacio }));
+      };
+      cargar(() => buscarAhorro(med), setAhorro, []);
+      if (PROXY_URL) {
+        cargar(() => proxyGet(`/similares/buscar?q=${encodeURIComponent(med)}`), setSimilares, []);
+        cargar(() => proxyGet(`/benavides/buscar?q=${encodeURIComponent(med)}`), setBenavides, []);
+      }
+    }, 500);
+    return () => { vivo = false; clearTimeout(t); };
+  }, [med]);
+
+  // Sucursales de Similares cerca de ti (o de la capital del estado elegido) que pueden surtir el producto
+  const centro = coords || ESTADOS.find(e => e.nombre === estadoMx)!;
+  const sku = similares.estado === 'listo' ? similares.datos.find(p => p.disponible)?.id : undefined;
+  useEffect(() => {
+    if (!PROXY_URL || !sku) return;
+    let vivo = true;
+    setSucursales({ estado: 'cargando', datos: [] });
+    proxyGet(`/similares/sucursales?lat=${centro.lat}&lon=${centro.lon}&sku=${sku}`)
+      .then(d => vivo && setSucursales({ estado: 'listo', datos: d }))
+      .catch(() => vivo && setSucursales({ estado: 'error', datos: [] }));
+    return () => { vivo = false; };
+  }, [sku, centro.lat, centro.lon]);
+
+  if (med.length < 3) return null;
+
+  return (
+    <section className="mb-8">
+      <SeccionTitulo>Precio y existencia de {med}</SeccionTitulo>
+      <div className="space-y-3">
+        <CadenaTarjeta nombre="Farmacias del Ahorro" sitio="fahorro.com" carga={ahorro} />
+
+        {PROXY_URL && (
+          <CadenaTarjeta nombre="Farmacias Similares" sitio="farmaciasdesimilares.com" carga={similares}>
+            {sku && (
+              <div className="mt-3 border-t border-line pt-3">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-ink">Sucursales {coords ? 'cerca de ti' : `en ${estadoMx}`}</p>
+                  {coords ? (
+                    <span className="flex items-center gap-1 text-xs text-muted"><LocateFixed className="h-3.5 w-3.5" /> Tu ubicación</span>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <select value={estadoMx} onChange={e => setEstadoMx(e.target.value)} className="rounded-full border border-line bg-canvas px-3 py-1.5 text-sm text-ink outline-none focus:border-brand" aria-label="Estado">
+                        {ESTADOS.map(e => <option key={e.nombre}>{e.nombre}</option>)}
+                      </select>
+                      <button onClick={onUbicar} aria-label="Usar mi ubicación" className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-soft text-brand"><LocateFixed className="h-4 w-4" /></button>
+                    </div>
+                  )}
+                </div>
+                {sucursales.estado === 'cargando' && <div className="h-14 animate-pulse rounded-xl bg-canvas" />}
+                {sucursales.estado === 'error' && <p className="text-sm text-muted">No pudimos ver las sucursales ahora.</p>}
+                {sucursales.estado === 'listo' && (
+                  <ul className="space-y-2">
+                    {[...sucursales.datos].sort((a, b) => Number(b.surte) - Number(a.surte) || a.distanciaKm - b.distanciaKm).slice(0, 6).map(s => (
+                      <li key={s.id} className="flex items-center gap-3 rounded-xl bg-canvas px-3 py-2.5">
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold capitalize text-ink">{s.nombre.toLowerCase()}</span>
+                          <span className="block truncate text-xs capitalize text-muted">{s.direccion.toLowerCase()} · {formatDistancia(s.distanciaKm * 1000)}</span>
+                        </span>
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${s.surte ? 'bg-mint-soft text-mint-strong' : 'bg-line text-muted'}`}>{s.surte ? 'Lo puede surtir' : 'Sin confirmar'}</span>
+                        <a href={`https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}`} target="_blank" rel="noopener noreferrer" aria-label={`Cómo llegar a ${s.nombre}`} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand text-white">
+                          <Navigation className="h-4 w-4" />
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </CadenaTarjeta>
+        )}
+
+        {PROXY_URL && <CadenaTarjeta nombre="Farmacias Benavides" sitio="benavides.com.mx" carga={benavides} />}
+      </div>
+      <p className="mt-3 text-xs text-faint">Precios y existencias de las tiendas en línea de cada cadena; en sucursal pueden variar. FotoFarma no vende medicamentos.</p>
+    </section>
+  );
+};
+
 const FarmaciasView = (_: { key?: string }) => {
   const [busqueda, setBusqueda] = useState('');
   const [misMeds, setMisMeds] = useState<string[]>([]);
   const [estado, setEstado] = useState<'inicio' | 'ubicando' | 'buscando' | 'listo' | 'sin-permiso' | 'error'>('inicio');
   const [farmacias, setFarmacias] = useState<Farmacia[]>([]);
+  const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
 
   // Nombres de las medicinas que ya tienes en tus tomas, para buscarlas con un toque
   useEffect(() => {
@@ -818,6 +1025,7 @@ const FarmaciasView = (_: { key?: string }) => {
     setEstado('ubicando');
     navigator.geolocation.getCurrentPosition(
       async ({ coords }) => {
+        setCoords({ lat: coords.latitude, lon: coords.longitude });
         setEstado('buscando');
         try {
           let lista = await buscarFarmacias(coords.latitude, coords.longitude, 3000);
@@ -857,7 +1065,7 @@ const FarmaciasView = (_: { key?: string }) => {
         </label>
       </Banda>
 
-      <div className={`relative mx-auto grid max-w-5xl gap-6 ${PAD_X} ${SOLAPE} wide:grid-cols-[1fr_1.35fr] wide:items-start`}>
+      <div className={`relative mx-auto grid max-w-5xl grid-cols-1 gap-6 ${PAD_X} ${SOLAPE} wide:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] wide:items-start [&>*]:min-w-0`}>
         {/* Columna izquierda: qué buscas y dónde estás */}
         <div className="space-y-6">
           <section className="rounded-[28px] bg-card p-[clamp(20px,3.4vmin,28px)] shadow-soft">
@@ -897,9 +1105,11 @@ const FarmaciasView = (_: { key?: string }) => {
 
         {/* Columna derecha: resultados */}
         <section className="wide:pt-[clamp(44px,7vh,64px)]">
+          <DisponibilidadCadenas med={med} coords={coords} onUbicar={localizar} />
+
           {estado === 'inicio' && (
             <div className="rounded-[24px] border-2 border-dashed border-line p-8 text-center text-sm text-muted">
-              Toca <b className="text-ink">Buscar farmacias cercanas</b> para ver dónde conseguir tu medicina.
+              {med.length < 3 && <>Escribe o elige un medicamento para ver su precio y existencia. </>}Toca <b className="text-ink">Buscar farmacias cercanas</b> para ver todas las farmacias a tu alrededor.
             </div>
           )}
 
