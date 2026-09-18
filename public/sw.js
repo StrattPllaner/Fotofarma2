@@ -33,7 +33,7 @@ self.addEventListener('notificationclick', (event) => {
     // Aquí se podría añadir lógica para marcar como completada
   } else {
     event.waitUntil(
-      clients.openWindow('/')
+      clients.openWindow(self.registration.scope)
     );
   }
 });

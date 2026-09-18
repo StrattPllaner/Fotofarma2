@@ -2,19 +2,19 @@
   "name": "FotoFarma",
   "short_name": "FotoFarma",
   "description": "Tu asistente de medicación inteligente",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#10b981",
   "icons": [
     {
-      "src": "/logo.svg",
+      "src": "logo.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     },
     {
-      "src": "/logo.svg",
+      "src": "logo.svg",
       "sizes": "512x512",
       "type": "image/svg+xml"
     }

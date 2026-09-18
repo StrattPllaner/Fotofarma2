@@ -81,9 +81,11 @@ interface Prescription {
 }
 
 // --- Gemini Service ---
+// Servidor Express (server.ts). En GitHub Pages no hay backend: define VITE_API_URL al compilar.
+const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 const analyzePrescription = async (base64Image: string) => {
   try {
-    const response = await fetch("/api/analyze-prescription", {
+    const response = await fetch(`${API_URL}/api/analyze-prescription`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -105,7 +107,7 @@ const analyzePrescription = async (base64Image: string) => {
 
 const performSecurityAudit = async (newMeds: any[], historyMeds: any[]) => {
   try {
-    const response = await fetch("/api/security-audit", {
+    const response = await fetch(`${API_URL}/api/security-audit`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1415,7 +1417,7 @@ export default function App() {
       } else if (permission === 'granted') {
         new Notification("¡Notificaciones activadas!", {
           body: "Te avisaremos cuando sea hora de tu medicina.",
-          icon: '/logo.svg'
+          icon: `${import.meta.env.BASE_URL}logo.svg`
         });
         
         // Iniciamos suscripción persistente al servidor
@@ -1441,7 +1443,7 @@ export default function App() {
       });
 
       // Enviar la suscripción a nuestro servidor con el offset de zona horaria
-      await fetch('/api/subscribe', {
+      await fetch(`${API_URL}/api/subscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -1539,8 +1541,8 @@ export default function App() {
           const title = `¡Hora de tu medicina!`;
           const options = {
             body: `Es momento de tomar: ${med.name} (${med.dosage})`,
-            icon: '/logo.svg',
-            badge: '/logo.svg',
+            icon: `${import.meta.env.BASE_URL}logo.svg`,
+            badge: `${import.meta.env.BASE_URL}logo.svg`,
             tag: `med-${docSnap.id}`,
             renotify: true,
             requireInteraction: true
@@ -1638,7 +1640,7 @@ export default function App() {
     const title = "¡Prueba de FotoFarma!";
     const options = { 
       body: "Así llegará el aviso de tu medicina 💊",
-      icon: '/logo.svg',
+      icon: `${import.meta.env.BASE_URL}logo.svg`,
       tag: 'test-notification'
     };
     if ('serviceWorker' in navigator && Notification.permission === 'granted') {
