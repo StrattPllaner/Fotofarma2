@@ -20,7 +20,13 @@ jobs:
           npm install
           npm run build
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # URL pública de tu Cloudflare Worker (proxy/worker.js). Sirve las rutas /api/* (IA)
+          # y /similares|/benavides (precios). Configúrala en:
+          #   Settings > Secrets and variables > Actions > Variables > New repository variable
+          #   Nombre: VITE_PROXY_URL   Valor: https://fotofarma-proxy.<tu-subdominio>.workers.dev
+          VITE_PROXY_URL: ${{ vars.VITE_PROXY_URL }}
+          # (opcional) Si algún día alojas el backend en otro sitio, define VITE_API_URL aparte.
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
 
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4

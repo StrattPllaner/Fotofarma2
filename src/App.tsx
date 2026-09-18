@@ -93,8 +93,10 @@ interface Prescription {
 }
 
 // --- Gemini Service ---
-// Servidor Express (server.ts). En GitHub Pages no hay backend: define VITE_API_URL al compilar.
-const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+// Backend de la IA. En GitHub Pages no hay servidor Express: las rutas /api/* las sirve
+// el Cloudflare Worker (proxy/worker.js). Si VITE_API_URL no está definido, usamos VITE_PROXY_URL
+// (el mismo Worker), así solo necesitas configurar una URL. En local, server.ts responde en el mismo origen.
+const API_URL = (import.meta.env.VITE_API_URL || import.meta.env.VITE_PROXY_URL || '').replace(/\/$/, '');
 const analyzePrescription = async (base64Image: string) => {
   try {
     const response = await fetch(`${API_URL}/api/analyze-prescription`, {
