@@ -1382,8 +1382,78 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
   );
 };
 
+// --- Pantalla de arranque de la app instalada ---
+const isInstalledApp = () => {
+  try {
+    return window.matchMedia('(display-mode: standalone)').matches
+      || window.matchMedia('(display-mode: fullscreen)').matches
+      || (navigator as any).standalone === true
+      || new URLSearchParams(location.search).has('splash');
+  } catch {
+    return false;
+  }
+};
+
+const SPLASH_MS = 1800;
+
+const Splash = (_: { key?: string }) => (
+  <motion.div
+    initial={{ opacity: 1 }}
+    exit={{ opacity: 0, scale: 1.03 }}
+    transition={{ duration: 0.4, ease: [0.2, 0.8, 0.2, 1] }}
+    className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-[#f3eee4] px-6 text-[#1f2a24]"
+    aria-label="Cargando FotoFarma"
+  >
+    <motion.img
+      src={`${import.meta.env.BASE_URL}logo.svg`}
+      alt=""
+      initial={{ scale: 0.8, opacity: 0, y: 8 }}
+      animate={{ scale: 1, opacity: 1, y: 0 }}
+      transition={{ type: 'spring', stiffness: 260, damping: 22, delay: 0.05 }}
+      className="h-[clamp(88px,18vmin,144px)] w-[clamp(88px,18vmin,144px)] rounded-[26%] shadow-[0_18px_40px_-16px_rgba(16,185,129,0.55)]"
+    />
+    <motion.h1
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, delay: 0.3, ease: [0.2, 0.8, 0.2, 1] }}
+      className="mt-[clamp(20px,4vmin,36px)] font-serif text-[clamp(2rem,6vmin,3.5rem)] font-semibold tracking-tight"
+    >
+      FotoFarma
+    </motion.h1>
+    <motion.p
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, delay: 0.45, ease: [0.2, 0.8, 0.2, 1] }}
+      className="mt-2 text-[clamp(0.95rem,2.2vmin,1.2rem)] text-[#5b6b61]"
+    >
+      Tus medicinas, a su hora.
+    </motion.p>
+    <div className="absolute bottom-[max(56px,calc(env(safe-area-inset-bottom)+40px))] h-[3px] w-[clamp(120px,22vmin,200px)] overflow-hidden rounded-full bg-[#1f2a24]/10">
+      <motion.div
+        initial={{ scaleX: 0 }}
+        animate={{ scaleX: 1 }}
+        transition={{ duration: (SPLASH_MS - 300) / 1000, ease: [0.4, 0, 0.2, 1] }}
+        className="h-full origin-left rounded-full bg-[#2f5d46]"
+      />
+    </div>
+  </motion.div>
+);
+
 export default function App() {
   const [view, setView] = useState<View>('login');
+  const [showSplash, setShowSplash] = useState(isInstalledApp);
+
+  useEffect(() => {
+    if (!showSplash) return;
+    const t = setTimeout(() => setShowSplash(false), SPLASH_MS);
+    return () => clearTimeout(t);
+  }, [showSplash]);
+
+  // Barra de estado del teléfono del mismo color que la pantalla visible
+  useEffect(() => {
+    const color = showSplash || view === 'login' ? '#f3eee4' : view === 'camera' || view === 'preview' ? '#000000' : '#fafafa';
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', color);
+  }, [showSplash, view]);
   const [user, setUser] = useState<any>(null);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -1693,6 +1763,10 @@ export default function App() {
 
   return (
     <div className="min-h-dvh bg-zinc-50 font-sans text-zinc-900 selection:bg-emerald-100 selection:text-emerald-900">
+      <AnimatePresence>
+        {showSplash && <Splash key="splash" />}
+      </AnimatePresence>
+
       <AnimatePresence>
         {activeAlarm && (
           <AlarmOverlay 
