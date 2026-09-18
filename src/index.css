@@ -41,17 +41,18 @@
 
 /* Alto de la barra inferior; el contenido deja este espacio libre */
 :root {
-  --nav-h: calc(88px + env(safe-area-inset-bottom));
+  --nav-bar: 64px;
+  --nav-h: calc(var(--nav-bar) + env(safe-area-inset-bottom));
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 @media (min-width: 768px) {
-  :root { --nav-h: calc(92px + env(safe-area-inset-bottom)); }
+  :root { --nav-bar: 68px; }
 }
 
 /* Celular acostado: barra más baja para dejar sitio al contenido */
 @media (max-height: 500px) {
-  :root { --nav-h: calc(76px + env(safe-area-inset-bottom)); }
+  :root { --nav-bar: 56px; }
 }
 
 html, body { background: var(--color-canvas); color: var(--color-ink); overscroll-behavior-y: none; }

@@ -29,7 +29,10 @@ import {
   Clock3,
   Settings2,
   ArrowLeft,
-  History
+  History,
+  CalendarDays,
+  FileText,
+  HelpCircle
 } from 'lucide-react';
 import {
   auth,
@@ -52,7 +55,7 @@ import {
 } from './localdb';
 
 // --- Types ---
-type View = 'login' | 'dashboard' | 'camera' | 'calendar' | 'gallery' | 'preview';
+type View = 'login' | 'dashboard' | 'camera' | 'calendar' | 'gallery' | 'preview' | 'receta' | 'perfil';
 
 interface Medication {
   id?: string;
@@ -322,195 +325,493 @@ const CheckCircle = ({ done, className = '' }: { done: boolean; className?: stri
   </span>
 );
 
-const MedCard = ({ med, onToggle, onOpen }: { med: Medication & { completedAt?: number }; onToggle: () => void; onOpen: () => void; key?: string }) => {
-  const tone = toneFor(med.name);
-  return (
-    <motion.li
-      layout
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, ease: [0.2, 0.8, 0.2, 1] }}
-      className="tile relative flex items-center gap-[clamp(12px,2vmin,18px)] overflow-hidden rounded-[22px] bg-card py-[clamp(12px,2vmin,18px)] pr-2 pl-[clamp(16px,2.4vmin,22px)] shadow-soft"
-    >
-      <span className={`absolute inset-y-0 left-0 w-1.5 ${tone.edge}`} />
-      <span className={`flex h-[clamp(48px,6.5vmin,60px)] w-[clamp(48px,6.5vmin,60px)] shrink-0 items-center justify-center rounded-2xl ${tone.tile}`}>
-        <Pill className="h-1/2 w-1/2 " />
-      </span>
-      <button onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-3 text-left" aria-label={med.completed ? `Desmarcar ${med.name}` : `Marcar ${med.name} como tomado`}>
-        <span className="min-w-0 flex-1">
-          <span className={`block truncate text-[clamp(1rem,2.1vmin,1.15rem)] font-semibold ${med.completed ? 'text-muted' : 'text-ink'}`}>{med.name}</span>
-          <span className="block truncate text-sm text-muted">{med.dosage}</span>
-        </span>
-        <span className="flex shrink-0 flex-col items-end gap-1.5">
-          <span className={`rounded-full px-3 py-1 text-sm font-semibold tabular-nums ${tone.pill}`}>{formatHora(med.time)}</span>
-          <span className="flex items-center gap-1.5 text-sm">
-            <CheckCircle done={med.completed} className="h-5 w-5" />
-            <span className={med.completed ? 'font-semibold text-brand' : 'text-muted'}>{med.completed ? 'Tomado' : 'Próxima toma'}</span>
-          </span>
-          {med.completed && med.completedAt && <span className="-mt-1 text-xs text-faint">{haceCuanto(med.completedAt)}</span>}
-        </span>
-      </button>
-      <button onClick={onOpen} aria-label="Ver en el calendario" className="flex h-10 w-8 shrink-0 items-center justify-center rounded-full text-faint hover:text-ink">
-        <ChevronRight className="h-5 w-5" />
-      </button>
-    </motion.li>
-  );
-};
+// --- Piezas compartidas del diseño (banda de color + tarjetas) ---
+const PAD_X = 'px-[clamp(16px,4vw,40px)]';
+const SOLAPE = '-mt-[clamp(44px,7vh,64px)]'; // cuánto sube el contenido sobre la banda
 
-const HeroCamara = ({ onClick, className = '' }: { onClick: () => void; className?: string }) => (
-  <button
-    onClick={onClick}
-    aria-label="Escanear receta"
-    className={`tile group relative isolate overflow-hidden rounded-[clamp(26px,4vmin,40px)] bg-gradient-to-br from-[#b3c8fb] via-[#94b3f8] to-[#7a9ff3] text-left shadow-[0_20px_40px_-24px_rgb(62_102_214/0.7)] ${className}`}
-  >
-    <span className="absolute -top-1/3 -left-1/4 -z-10 h-[90%] w-[70%] rounded-full bg-card/15" />
-    <span className="absolute -right-[12%] -bottom-[45%] -z-10 h-[110%] w-[55%] rotate-[-30deg] rounded-[38%] bg-[#6d93f1]/70 transition-transform duration-500 group-hover:rotate-[-24deg]" />
-    <span className="flex h-full min-h-[inherit] flex-col items-center justify-center gap-[clamp(10px,2vmin,20px)] p-6">
-      <svg viewBox="0 0 220 120" className="w-[clamp(150px,32vmin,300px)] drop-shadow-[0_10px_20px_rgb(40_70_170/0.25)]" aria-hidden="true">
-        <g className="flash-l" stroke="white" strokeWidth="9" strokeLinecap="round" opacity="0.9">
-          <line x1="22" y1="44" x2="38" y2="53" />
-          <line x1="18" y1="72" x2="38" y2="72" />
-        </g>
-        <g className="flash-r" stroke="white" strokeWidth="9" strokeLinecap="round" opacity="0.9">
-          <line x1="198" y1="44" x2="182" y2="53" />
-          <line x1="202" y1="72" x2="182" y2="72" />
-        </g>
-        <path d="M84 22c2-6 7-10 14-10h24c7 0 12 4 14 10l3 7h19c9 0 16 7 16 16v50c0 9-7 16-16 16H62c-9 0-16-7-16-16V45c0-9 7-16 16-16h19z" fill="white" />
-        <circle cx="110" cy="71" r="26" fill="#94b3f8" />
-        <circle cx="110" cy="71" r="15" fill="white" />
-      </svg>
-      <span className="rounded-full bg-card/25 px-4 py-1.5 text-[clamp(0.9rem,1.8vmin,1.05rem)] font-semibold text-white backdrop-blur-sm">
-        Escanear receta
-      </span>
-    </span>
+const LogoTile = () => (
+  <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/95 shadow-sm">
+    <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" className="h-8 w-8 rounded-[10px]" />
+  </span>
+);
+
+const BandaBoton = ({ onClick, label, children }: { onClick: () => void; label: string; children: ReactNode }) => (
+  <button onClick={onClick} aria-label={label} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 text-white hover:bg-white/25">
+    {children}
   </button>
 );
 
-const DashboardView = ({ setView, reminders, onTestAlarm, onOpenSettings, installPrompt, onInstall, onToggle, userName }: DashboardProps) => {
+// Encabezado azul de cada pantalla; el contenido que sigue se monta encima con SOLAPE
+const Banda = ({ title, left, right, center = false, children }: { title: ReactNode; left?: ReactNode; right?: ReactNode; center?: boolean; children?: ReactNode }) => (
+  <div className="relative overflow-hidden bg-brand text-white">
+    <span className="pointer-events-none absolute -top-24 -right-20 h-64 w-64 rounded-full bg-white/10" />
+    <span className="pointer-events-none absolute -bottom-32 left-1/4 h-56 w-56 rounded-full bg-brand-strong/30" />
+    <div className={`relative mx-auto max-w-5xl ${PAD_X} pt-[max(16px,env(safe-area-inset-top))] pb-[clamp(64px,10vh,92px)]`}>
+      <div className="flex min-h-14 items-center gap-3">
+        {left}
+        <h1 className={`min-w-0 flex-1 truncate font-semibold ${center ? 'text-center text-[clamp(1rem,2.2vmin,1.2rem)] uppercase tracking-wide' : 'text-[clamp(1.5rem,3.6vmin,2.1rem)] tracking-tight'}`}>
+          {title}
+        </h1>
+        {right}
+      </div>
+      {children}
+    </div>
+  </div>
+);
+
+// Anillo de progreso con número al centro
+const Ring = ({ value, total, color, label }: { value: number; total: number; color: string; label: string }) => {
+  const r = 42;
+  const c = 2 * Math.PI * r;
+  const pct = total > 0 ? Math.min(value / total, 1) : 0;
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div className="relative h-[clamp(92px,13vmin,124px)] w-[clamp(92px,13vmin,124px)]">
+        <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
+          <circle cx="50" cy="50" r={r} fill="none" stroke="var(--color-line)" strokeWidth="8" />
+          <motion.circle
+            cx="50" cy="50" r={r} fill="none" stroke={color} strokeWidth="8" strokeLinecap="round"
+            strokeDasharray={c}
+            initial={{ strokeDashoffset: c }}
+            animate={{ strokeDashoffset: c * (1 - pct) }}
+            transition={{ duration: 0.8, ease: [0.2, 0.8, 0.2, 1] }}
+          />
+        </svg>
+        <span className="absolute inset-0 flex items-center justify-center text-[clamp(1.6rem,4vmin,2.2rem)] font-bold text-ink tabular-nums">{value}</span>
+      </div>
+      <span className="text-sm text-muted">{label}</span>
+    </div>
+  );
+};
+
+// Hoja inferior (celular) / ventana centrada (pantallas grandes)
+const Hoja = ({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode; key?: string }) => (
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+    className="fixed inset-0 z-[110] flex items-end justify-center bg-ink/40 backdrop-blur-sm md:items-center md:p-6"
+    onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+  >
+    <motion.div
+      initial={{ y: 40, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      exit={{ y: 40, opacity: 0 }}
+      transition={{ type: 'spring', stiffness: 380, damping: 34 }}
+      className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-t-[28px] bg-card p-6 pb-[max(24px,env(safe-area-inset-bottom))] shadow-2xl md:rounded-[28px] md:p-8"
+    >
+      <div className="mb-5 flex items-center justify-between">
+        <h3 className="text-xl font-semibold text-ink">{title}</h3>
+        <button onClick={onClose} aria-label="Cerrar" className="flex h-9 w-9 items-center justify-center rounded-full bg-canvas text-muted hover:text-ink">
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+      {children}
+    </motion.div>
+  </motion.div>
+);
+
+const AvisoLegal = ({ onClose }: { onClose: () => void; key?: string }) => (
+  <Hoja title="Aviso legal" onClose={onClose}>
+    <div className="space-y-4 text-sm leading-relaxed text-muted">
+      <p className="rounded-2xl bg-sun-soft p-4 text-ink">FotoFarma es una herramienta de apoyo. <b>No es un dispositivo médico</b> ni reemplaza la consulta con un profesional de la salud.</p>
+      <section>
+        <h4 className="font-semibold text-ink">1. Lectura automática</h4>
+        <p>La lectura de la foto la hace un modelo de inteligencia artificial y puede equivocarse con la letra o con el nombre de un medicamento.</p>
+      </section>
+      <section>
+        <h4 className="font-semibold text-ink">2. Revisión obligatoria</h4>
+        <p>Antes de guardar, comprueba que cada medicamento, dosis y horario coincida con lo que indicó tu médico.</p>
+      </section>
+      <section>
+        <h4 className="font-semibold text-ink">3. Interacciones</h4>
+        <p>La revisión de interacciones busca casos conocidos, pero no cubre todos los posibles.</p>
+      </section>
+      <section>
+        <h4 className="font-semibold text-ink">4. Tus datos</h4>
+        <p>Tus recetas y recordatorios se guardan solo en este navegador. Si borras los datos del navegador, se pierden.</p>
+      </section>
+    </div>
+    <button onClick={onClose} className="mt-6 w-full rounded-2xl bg-ink py-3.5 font-semibold text-white">Entendido</button>
+  </Hoja>
+);
+
+const SeccionTitulo = ({ children }: { children: ReactNode }) => (
+  <h2 className="mb-3 px-1 text-xs font-semibold uppercase tracking-[0.12em] text-muted">{children}</h2>
+);
+
+const DashboardView = ({ setView, reminders, onToggle, userName }: DashboardProps) => {
   const total = reminders.length;
   const hechas = reminders.filter(r => r.completed).length;
   const pendientes = reminders.filter(r => !r.completed);
   const siguiente = pendientes[0];
-  const todoListo = pendientes.length === 0;
-
-  const Aviso = (
-    <button
-      onClick={() => setView('calendar')}
-      className={`tile relative flex w-full shrink-0 items-center gap-4 overflow-hidden rounded-[24px] p-[clamp(16px,2.6vmin,24px)] text-left ${todoListo ? 'bg-gradient-to-r from-mint-soft to-[#eef9f5]' : 'bg-gradient-to-r from-brand-soft to-[#f1f5fe]'}`}
-    >
-      <span className={`absolute -right-6 -bottom-10 h-28 w-28 rounded-full ${todoListo ? 'bg-mint/10' : 'bg-brand/10'}`} />
-      {todoListo ? (
-        <Sparkle className="h-7 w-7 shrink-0 fill-mint text-mint" />
-      ) : (
-        <Clock3 className="h-7 w-7 shrink-0 text-brand" />
-      )}
-      <span className="min-w-0 flex-1">
-        <span className="block text-[clamp(1rem,2.1vmin,1.15rem)] font-semibold text-ink">
-          {todoListo ? 'Todo listo por hoy' : `Te ${pendientes.length === 1 ? 'falta 1 toma' : `faltan ${pendientes.length} tomas`}`}
-        </span>
-        <span className="block truncate text-sm text-muted">
-          {todoListo
-            ? (total === 1 ? 'Tomaste tu medicina de hoy' : total ? `Tomaste tus ${total} medicinas de hoy` : 'No tienes nada pendiente')
-            : `Siguiente: ${siguiente.name} a las ${formatHora(siguiente.time)}`}
-        </span>
-        {total > 0 && !todoListo && (
-          <span className="mt-2 block h-1.5 w-full max-w-60 overflow-hidden rounded-full bg-card">
-            <motion.span
-              className="block h-full rounded-full bg-brand"
-              initial={{ width: 0 }}
-              animate={{ width: `${Math.round((hechas / total) * 100)}%` }}
-              transition={{ duration: 0.6, ease: [0.2, 0.8, 0.2, 1] }}
-            />
-          </span>
-        )}
-      </span>
-      <ChevronRight className="h-5 w-5 shrink-0 text-faint" />
-    </button>
-  );
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.25, ease: [0.2, 0.8, 0.2, 1] }}
-      className="flex h-dvh flex-col overflow-y-auto bg-canvas px-[clamp(16px,4vw,56px)] pt-[max(clamp(16px,3.5vh,44px),env(safe-area-inset-top))] pb-[calc(var(--nav-h)+16px)] wide:overflow-hidden"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="min-h-dvh bg-canvas pb-[calc(var(--nav-h)+28px)]"
     >
-      <header className="mb-[clamp(16px,3vh,32px)] flex shrink-0 items-center justify-between gap-3">
-        <h1 className="min-w-0 truncate text-[clamp(1.5rem,3.8vmin,2.6rem)] text-ink">
-          Hola, <b className="font-bold">{userName || 'bienvenido'}</b>
-        </h1>
-        <div className="flex shrink-0 items-center gap-2">
-          {installPrompt && (
-            <button onClick={onInstall} className="hidden items-center gap-2 rounded-full bg-ink px-4 py-2.5 text-sm font-semibold text-white sm:flex">
-              <Download className="h-4 w-4" /> Instalar
-            </button>
-          )}
-          <button
-            onClick={() => setView('calendar')}
-            className="flex items-center gap-2 rounded-full bg-brand-soft px-3.5 py-2.5 sm:px-4 text-[clamp(0.85rem,1.7vmin,1rem)] font-medium text-ink hover:bg-[#dde6fc]"
-          >
-            <CalendarIcon className="h-[1.15em] w-[1.15em] text-brand" />
-            <span className="sm:hidden">{new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}</span>
-            <span className="hidden sm:inline">{new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-          </button>
-          <button onClick={onOpenSettings} aria-label="Ajustes" className="flex h-11 w-11 items-center justify-center rounded-full bg-card text-muted shadow-soft hover:text-ink">
-            <Settings2 className="h-5 w-5" />
-          </button>
-        </div>
-      </header>
+      <Banda title="FotoFarma" right={<LogoTile />} />
 
-      {installPrompt && (
-        <button onClick={onInstall} className="mb-4 flex shrink-0 items-center justify-between rounded-2xl bg-ink px-4 py-3 text-left text-white sm:hidden">
-          <span className="flex items-center gap-3 text-sm font-semibold"><Download className="h-5 w-5" /> Instala FotoFarma para recibir alarmas</span>
-          <ChevronRight className="h-5 w-5 opacity-70" />
-        </button>
-      )}
-
-      <div className="flex flex-col gap-[clamp(16px,3vh,28px)] wide:grid wide:min-h-0 wide:flex-1 wide:grid-cols-12 wide:gap-[clamp(20px,3vmin,40px)]">
-        {/* Columna izquierda: cámara + aviso */}
-        <div className="flex flex-col gap-[clamp(16px,3vh,28px)] wide:col-span-5 wide:min-h-0">
-          <HeroCamara onClick={() => setView('camera')} className="min-h-[clamp(190px,27vh,300px)] wide:min-h-0 wide:flex-1 tall:min-h-[30vh]" />
-          <div className="hidden wide:block">{Aviso}</div>
-        </div>
-
-        {/* Columna derecha: medicamentos */}
-        <section className="flex flex-col wide:col-span-7 wide:min-h-0">
-          <div className="mb-4 flex shrink-0 items-end justify-between gap-3">
-            <div className="flex items-stretch gap-3">
-              <span className="w-1.5 rounded-full bg-gradient-to-b from-mint to-[#7fd9bd]" />
-              <div>
-                <h2 className="text-[clamp(1.4rem,3.2vmin,2.2rem)] font-semibold leading-tight text-ink">Tus medicamentos</h2>
-                <p className="text-[clamp(0.9rem,1.8vmin,1.05rem)] text-muted">
-                  {total === 0 ? 'Sin tomas para hoy' : `${total} ${total === 1 ? 'toma programada' : 'tomas programadas'}`}
-                </p>
+      <div className={`relative mx-auto grid max-w-5xl gap-[clamp(20px,3.5vh,32px)] ${PAD_X} ${SOLAPE} wide:grid-cols-2 wide:items-start wide:gap-8`}>
+        {/* Saludo + anillos */}
+        <motion.section
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }}
+          className="rounded-[28px] bg-card p-[clamp(20px,3.4vmin,32px)] shadow-soft"
+        >
+          <p className="text-sm font-semibold uppercase tracking-[0.12em] text-ink">
+            Hola, {userName || 'bienvenido'}
+          </p>
+          <p className="mt-0.5 text-sm text-muted first-letter:uppercase">
+            {new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </p>
+          <div className="mt-6 flex justify-around">
+            <Ring value={hechas} total={total} color="var(--color-brand)" label="Tomadas hoy" />
+            <Ring value={pendientes.length} total={total} color="var(--color-sun)" label="Pendientes" />
+          </div>
+          <div className="-mx-[clamp(20px,3.4vmin,32px)] -mb-[clamp(20px,3.4vmin,32px)] mt-6 hidden border-t border-line px-[clamp(20px,3.4vmin,32px)] pt-5 pb-[clamp(20px,3.4vmin,32px)] wide:block">
+          {/* Próxima toma (solo si hay) */}
+          {siguiente && (
+            <div>
+              <SeccionTitulo>Próxima toma</SeccionTitulo>
+              <div className="flex items-center gap-4 rounded-2xl bg-canvas px-4 py-3">
+                <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${toneFor(siguiente.name).tile}`}><Pill className="h-5 w-5" /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold text-ink">{siguiente.name}</span>
+                  <span className="block truncate text-sm text-muted">{formatHora(siguiente.time)}{siguiente.dosage ? ` · ${siguiente.dosage}` : ''}</span>
+                </span>
+                <button onClick={() => onToggle(siguiente)} aria-label={`Marcar ${siguiente.name} como tomado`} className="rounded-full">
+                  <CheckCircle done={false} className="h-10 w-10" />
+                </button>
               </div>
             </div>
-            <button onClick={onTestAlarm} className="rounded-full bg-card px-3 py-2 text-xs font-semibold text-muted shadow-soft hover:text-ink">
-              Probar alarma
+          )}
+          {total > 0 && !siguiente && (
+            <div className="flex items-center gap-3 rounded-2xl bg-mint-soft px-5 py-4">
+              <Sparkle className="h-6 w-6 shrink-0 fill-mint text-mint" />
+              <span className="font-semibold text-ink">Todo listo por hoy</span>
+            </div>
+          )}
+          </div>
+        </motion.section>
+
+        {/* Acceso rápido */}
+        <section className="wide:pt-[clamp(44px,7vh,64px)]">
+          <SeccionTitulo>Acceso rápido</SeccionTitulo>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => setView('camera')}
+              className="tile flex h-[clamp(120px,19vh,180px)] flex-col items-center justify-center gap-3 rounded-[24px] bg-brand p-4 text-white shadow-[0_16px_30px_-16px_rgb(62_102_214/0.9)]"
+            >
+              <Camera className="h-[clamp(30px,5vmin,40px)] w-[clamp(30px,5vmin,40px)]" strokeWidth={1.8} />
+              <span className="text-[clamp(0.95rem,2vmin,1.1rem)] font-semibold">Escanear receta</span>
+            </button>
+            <button
+              onClick={() => setView('calendar')}
+              className="tile flex h-[clamp(120px,19vh,180px)] flex-col items-center justify-center gap-3 rounded-[24px] bg-card p-4 text-ink shadow-soft"
+            >
+              <CalendarDays className="h-[clamp(30px,5vmin,40px)] w-[clamp(30px,5vmin,40px)] text-brand" strokeWidth={1.8} />
+              <span className="text-[clamp(0.95rem,2vmin,1.1rem)] font-semibold">Mis tomas</span>
+            </button>
+            <button
+              onClick={() => setView('gallery')}
+              className="tile col-span-2 flex items-center gap-4 rounded-[24px] bg-card px-5 py-4 text-left shadow-soft"
+            >
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-lav-soft text-lav"><FileText className="h-5 w-5" /></span>
+              <span className="flex-1 font-semibold text-ink">Mis recetas</span>
+              <ChevronRight className="h-5 w-5 text-faint" />
             </button>
           </div>
 
-          {total === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-[24px] border-2 border-dashed border-line p-8 text-center">
-              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-soft text-brand"><Pill className="h-7 w-7 " /></span>
-              <p className="font-semibold text-ink">Aún no hay medicinas para hoy</p>
-              <p className="max-w-xs text-sm text-muted">Escanea tu receta o agrégalas a mano desde el calendario.</p>
-              <button onClick={() => setView('calendar')} className="mt-1 rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-strong">Agregar a mano</button>
+          <div className="wide:hidden">
+          {/* Próxima toma (solo si hay) */}
+          {siguiente && (
+            <div className="mt-6">
+              <SeccionTitulo>Próxima toma</SeccionTitulo>
+              <div className="flex items-center gap-4 rounded-[24px] bg-card px-5 py-4 shadow-soft">
+                <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${toneFor(siguiente.name).tile}`}><Pill className="h-5 w-5" /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold text-ink">{siguiente.name}</span>
+                  <span className="block truncate text-sm text-muted">{formatHora(siguiente.time)}{siguiente.dosage ? ` · ${siguiente.dosage}` : ''}</span>
+                </span>
+                <button onClick={() => onToggle(siguiente)} aria-label={`Marcar ${siguiente.name} como tomado`} className="rounded-full">
+                  <CheckCircle done={false} className="h-10 w-10" />
+                </button>
+              </div>
             </div>
-          ) : (
-            <ul className="-mx-2 grid content-start gap-3 px-2 pb-2 wide:min-h-0 wide:flex-1 wide:overflow-y-auto tall:grid-cols-2 xl:wide:grid-cols-2">
-              <AnimatePresence initial={false}>
-                {[...pendientes, ...reminders.filter(r => r.completed)].map(med => (
-                  <MedCard key={med.id} med={med} onToggle={() => onToggle(med)} onOpen={() => setView('calendar')} />
-                ))}
-              </AnimatePresence>
-            </ul>
           )}
-
-          <div className="mt-[clamp(16px,3vh,24px)] wide:hidden">{Aviso}</div>
+          {total > 0 && !siguiente && (
+            <div className="mt-6 flex items-center gap-3 rounded-[24px] bg-mint-soft px-5 py-4">
+              <Sparkle className="h-6 w-6 shrink-0 fill-mint text-mint" />
+              <span className="font-semibold text-ink">Todo listo por hoy</span>
+            </div>
+          )}
+          </div>
         </section>
       </div>
+    </motion.div>
+  );
+};
+
+interface GalleryViewProps {
+  setView: (v: View) => void;
+  onOpen: (id: string) => void;
+  key?: string;
+}
+
+const GalleryView = ({ setView, onOpen }: GalleryViewProps) => {
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    const q = query(
+      collection(db, 'prescriptions'),
+      where('uid', '==', auth.currentUser.uid),
+      orderBy('scannedAt', 'desc')
+    );
+    return onSnapshot(q, (snapshot) => {
+      setPrescriptions(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Prescription)));
+      setLoading(false);
+    }, (error) => handleFirestoreError(error, 'list', 'prescriptions'));
+  }, []);
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="min-h-dvh bg-canvas pb-[calc(var(--nav-h)+28px)]">
+      <Banda
+        title="Mis recetas"
+        center
+        left={<BandaBoton onClick={() => setView('dashboard')} label="Volver"><ChevronLeft className="h-6 w-6" /></BandaBoton>}
+        right={<BandaBoton onClick={() => setView('camera')} label="Escanear receta"><Plus className="h-6 w-6" /></BandaBoton>}
+      />
+      <div className={`relative mx-auto max-w-5xl ${PAD_X} ${SOLAPE}`}>
+        {loading ? (
+          <div className="flex justify-center rounded-[28px] bg-card p-12 shadow-soft"><Loader2 className="h-8 w-8 animate-spin text-brand" /></div>
+        ) : prescriptions.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 rounded-[28px] bg-card p-12 text-center shadow-soft">
+            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-lav-soft text-lav"><FileText className="h-7 w-7" /></span>
+            <p className="font-semibold text-ink">Aún no has escaneado recetas</p>
+            <button onClick={() => setView('camera')} className="rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-strong">Escanear receta</button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-[clamp(12px,2vmin,20px)] sm:grid-cols-3 lg:grid-cols-4">
+            {prescriptions.map((p, i) => (
+              <motion.button
+                key={p.id}
+                onClick={() => onOpen(p.id)}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: Math.min(i, 10) * 0.03, ease: [0.2, 0.8, 0.2, 1] }}
+                className="tile overflow-hidden rounded-[22px] bg-card text-left shadow-soft"
+              >
+                <span className="block aspect-[4/3] bg-brand-soft">
+                  {p.imageUrl
+                    ? <img src={p.imageUrl} alt="Receta" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                    : <span className="flex h-full items-center justify-center text-brand"><FileText className="h-9 w-9" /></span>}
+                </span>
+                <span className="block px-4 py-3">
+                  <span className="block truncate font-semibold text-ink">{p.medications?.length || 0} medicamentos</span>
+                  <span className="block text-sm text-muted">{new Date(p.scannedAt?.toDate?.() || p.scannedAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                </span>
+              </motion.button>
+            ))}
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+};
+
+const RecetaView = ({ id, setView }: { id: string | null; setView: (v: View) => void; key?: string }) => {
+  const [receta, setReceta] = useState<Prescription | null | undefined>(undefined);
+  const [confirmar, setConfirmar] = useState(false);
+
+  useEffect(() => {
+    if (!id) { setReceta(null); return; }
+    return onSnapshot(doc(db, 'prescriptions', id), (snap) => {
+      setReceta(snap.exists() ? ({ id: snap.id, ...snap.data() } as Prescription) : null);
+    });
+  }, [id]);
+
+  const eliminar = async () => {
+    if (!id || !auth.currentUser) return;
+    try {
+      const tomas = await getDocs(query(collection(db, 'reminders'), where('uid', '==', auth.currentUser.uid), where('prescriptionId', '==', id)));
+      await Promise.all(tomas.docs.map(d => deleteDoc(d.ref)));
+      await deleteDoc(doc(db, 'prescriptions', id));
+      setView('gallery');
+    } catch (error) {
+      handleFirestoreError(error, 'delete', `prescriptions/${id}`);
+    }
+  };
+
+  const meds: any[] = receta?.medications || [];
+
+  return (
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.25, ease: [0.2, 0.8, 0.2, 1] }} className="min-h-dvh bg-canvas pb-[calc(var(--nav-h)+28px)]">
+      <Banda
+        title="Detalle de receta"
+        center
+        left={<BandaBoton onClick={() => setView('gallery')} label="Volver"><ChevronLeft className="h-6 w-6" /></BandaBoton>}
+        right={<LogoTile />}
+      />
+      <div className={`relative mx-auto max-w-5xl ${PAD_X} ${SOLAPE}`}>
+        {receta === undefined ? (
+          <div className="flex justify-center rounded-[28px] bg-card p-12 shadow-soft"><Loader2 className="h-8 w-8 animate-spin text-brand" /></div>
+        ) : receta === null ? (
+          <div className="rounded-[28px] bg-card p-12 text-center text-muted shadow-soft">Esta receta ya no existe.</div>
+        ) : (
+          <div className="grid gap-6 wide:grid-cols-[1fr_1.1fr] wide:items-start">
+            <section className="rounded-[28px] bg-card p-4 shadow-soft">
+              <div className="aspect-[4/3] overflow-hidden rounded-[20px] bg-brand-soft">
+                {receta.imageUrl
+                  ? <img src={receta.imageUrl} alt="Foto de la receta" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                  : <span className="flex h-full items-center justify-center text-brand"><FileText className="h-12 w-12" /></span>}
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 px-2 pt-4 pb-1">
+                <div>
+                  <p className="font-semibold text-ink">Receta escaneada</p>
+                  <p className="text-sm text-muted">{new Date(receta.scannedAt?.toDate?.() || receta.scannedAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                </div>
+                <span className="flex items-center gap-1.5 rounded-full bg-mint-soft px-3 py-1 text-sm font-semibold text-mint-strong">
+                  <Check className="h-4 w-4" /> En tu calendario
+                </span>
+              </div>
+            </section>
+
+            <section className="wide:pt-[clamp(44px,7vh,64px)]">
+              <SeccionTitulo>Medicamentos</SeccionTitulo>
+              <ul className="overflow-hidden rounded-[24px] bg-card shadow-soft">
+                {meds.length === 0 && <li className="p-6 text-center text-sm text-muted">Sin medicamentos</li>}
+                {meds.map((m, i) => (
+                  <li key={i} className="flex items-center gap-4 border-b border-line px-5 py-4 last:border-0">
+                    <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${toneFor(m.name || '').tile}`}><Pill className="h-5 w-5" /></span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold text-ink">{m.name}</span>
+                      <span className="block truncate text-sm text-muted">{[m.dosage, m.frequency].filter(Boolean).join(' · ')}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-6 space-y-3">
+                <button onClick={() => setView('calendar')} className="w-full rounded-2xl bg-brand py-4 font-semibold text-white shadow-[0_16px_30px_-16px_rgb(62_102_214/0.9)] hover:bg-brand-strong">
+                  Ver en el calendario
+                </button>
+                <button onClick={() => setConfirmar(true)} className="w-full rounded-2xl py-3 text-sm font-semibold text-bad hover:bg-bad-soft">
+                  Eliminar receta
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
+      </div>
+      <ConfirmModal
+        isOpen={confirmar}
+        onClose={() => setConfirmar(false)}
+        onConfirm={eliminar}
+        title="¿Eliminar esta receta?"
+        message="También se quitan sus tomas del calendario."
+      />
+    </motion.div>
+  );
+};
+
+interface PerfilViewProps {
+  userSettings: UserSettings | null;
+  onUpdate: (data: Partial<UserSettings>) => void;
+  notificationPermission: NotificationPermission;
+  requestPermission: () => void;
+  onTestAlarm: () => void;
+  installPrompt: any;
+  onInstall: () => void;
+  onBorrar: (col: 'reminders' | 'prescriptions') => void;
+  key?: string;
+}
+
+const PerfilView = ({ userSettings, onUpdate, notificationPermission, requestPermission, onTestAlarm, installPrompt, onInstall, onBorrar }: PerfilViewProps) => {
+  const [hoja, setHoja] = useState<null | 'nombre' | 'horario' | 'aviso' | 'borrar'>(null);
+  const nombre = userSettings?.name?.trim();
+  const avisos = notificationPermission === 'granted';
+  const field = 'w-full rounded-2xl border border-line bg-canvas px-4 py-3.5 text-lg text-ink outline-none placeholder:text-faint focus:border-brand focus:bg-card';
+
+  const filas: { Icon: any; label: string; detalle?: string; onClick: () => void; hide?: boolean }[] = [
+    { Icon: User, label: 'Datos personales', detalle: nombre || 'Sin nombre', onClick: () => setHoja('nombre') },
+    { Icon: Clock3, label: 'Inicio de tu día', detalle: formatHora(userSettings?.dayStartTime || '08:00'), onClick: () => setHoja('horario') },
+    { Icon: Bell, label: 'Notificaciones', detalle: avisos ? 'Activadas' : 'Desactivadas', onClick: () => (avisos ? onTestAlarm() : requestPermission()) },
+    { Icon: Download, label: 'Instalar la app', onClick: onInstall, hide: !installPrompt },
+    { Icon: HelpCircle, label: 'Aviso legal', onClick: () => setHoja('aviso') },
+  ];
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="min-h-dvh bg-canvas pb-[calc(var(--nav-h)+28px)]">
+      <Banda title="Perfil" center right={<LogoTile />}>
+        <div className="mt-4 flex items-center gap-4">
+          <span className="flex h-[clamp(60px,9vmin,76px)] w-[clamp(60px,9vmin,76px)] shrink-0 items-center justify-center rounded-full bg-white/95 text-[clamp(1.5rem,3.5vmin,2rem)] font-bold text-brand">
+            {nombre ? nombre[0].toUpperCase() : <User className="h-1/2 w-1/2" />}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-[clamp(1.15rem,2.6vmin,1.5rem)] font-semibold">{nombre || 'Tu perfil'}</p>
+            <p className="text-sm text-white/80">Tus datos se guardan en este dispositivo</p>
+          </div>
+        </div>
+      </Banda>
+
+      <div className={`relative mx-auto max-w-2xl ${PAD_X} -mt-[clamp(36px,6vh,52px)]`}>
+        <ul className="overflow-hidden rounded-[24px] bg-card shadow-soft">
+          {filas.filter(f => !f.hide).map(({ Icon, label, detalle, onClick }) => (
+            <li key={label} className="border-b border-line last:border-0">
+              <button onClick={onClick} className="flex w-full items-center gap-4 px-5 py-4 text-left hover:bg-canvas">
+                <Icon className="h-5 w-5 shrink-0 text-ink" />
+                <span className="flex-1 font-medium text-ink">{label}</span>
+                {detalle && <span className="truncate text-sm text-muted">{detalle}</span>}
+                <ChevronRight className="h-5 w-5 shrink-0 text-faint" />
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        <button onClick={() => setHoja('borrar')} className="mt-8 w-full rounded-full bg-line/70 py-3.5 font-semibold text-ink hover:bg-line">
+          Borrar mis datos
+        </button>
+      </div>
+
+      <AnimatePresence>
+        {hoja === 'nombre' && (
+          <Hoja key="nombre" title="Datos personales" onClose={() => setHoja(null)}>
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-muted">¿Cómo te llamas?</span>
+              <input autoFocus maxLength={30} className={field} placeholder="Tu nombre" value={userSettings?.name || ''} onChange={e => onUpdate({ name: e.target.value })} />
+            </label>
+            <button onClick={() => setHoja(null)} className="mt-6 w-full rounded-2xl bg-brand py-3.5 font-semibold text-white hover:bg-brand-strong">Listo</button>
+          </Hoja>
+        )}
+        {hoja === 'horario' && (
+          <Hoja key="horario" title="Inicio de tu día" onClose={() => setHoja(null)}>
+            <p className="mb-4 text-sm text-muted">Es la base para programar tus medicinas: si tomas algo cada 8 horas, la primera toma será a esta hora.</p>
+            <input type="time" className={`${field} text-center text-2xl font-semibold tabular-nums text-brand-strong`} value={userSettings?.dayStartTime || '08:00'} onChange={e => onUpdate({ dayStartTime: e.target.value })} />
+            <button onClick={() => setHoja(null)} className="mt-6 w-full rounded-2xl bg-brand py-3.5 font-semibold text-white hover:bg-brand-strong">Listo</button>
+          </Hoja>
+        )}
+        {hoja === 'aviso' && <AvisoLegal key="aviso" onClose={() => setHoja(null)} />}
+        {hoja === 'borrar' && (
+          <Hoja key="borrar" title="Borrar mis datos" onClose={() => setHoja(null)}>
+            <p className="mb-5 text-sm text-muted">Se eliminan de este dispositivo y no se pueden recuperar.</p>
+            <div className="space-y-2">
+              <button onClick={() => { onBorrar('reminders'); setHoja(null); }} className="flex w-full items-center gap-3 rounded-2xl bg-bad-soft px-4 py-3.5 font-semibold text-bad hover:bg-[#fbdde1]">
+                <Trash2 className="h-5 w-5" /> Borrar recordatorios
+              </button>
+              <button onClick={() => { onBorrar('prescriptions'); setHoja(null); }} className="flex w-full items-center gap-3 rounded-2xl bg-bad-soft px-4 py-3.5 font-semibold text-bad hover:bg-[#fbdde1]">
+                <Trash2 className="h-5 w-5" /> Borrar recetas guardadas
+              </button>
+            </div>
+          </Hoja>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };
@@ -679,51 +980,7 @@ const Portada = ({ onStart }: { onStart: () => void; key?: string }) => {
       </div>
 
       <AnimatePresence>
-        {showTerms && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[120] flex items-end justify-center bg-ink/40 p-4 backdrop-blur-sm sm:items-center"
-            onClick={(e) => { if (e.target === e.currentTarget) setShowTerms(false); }}
-          >
-            <motion.div
-              initial={{ y: 24, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 24, opacity: 0 }}
-              className="w-full max-w-md rounded-[28px] bg-card text-ink shadow-2xl"
-            >
-              <div className="flex items-center justify-between px-6 pt-6 pb-2">
-                <h3 className="text-xl font-semibold">Aviso legal</h3>
-                <button onClick={() => setShowTerms(false)} className="flex h-9 w-9 items-center justify-center rounded-full bg-canvas text-muted" aria-label="Cerrar">
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-              <div className="max-h-[55vh] space-y-4 overflow-y-auto px-6 py-4 text-sm leading-relaxed text-muted">
-                <p className="rounded-2xl bg-sun-soft p-4 text-ink">FotoFarma es una herramienta de apoyo. <b>No es un dispositivo médico</b> ni reemplaza la consulta con un profesional de la salud.</p>
-                <section>
-                  <h4 className="font-semibold text-ink">1. Lectura automática</h4>
-                  <p>La lectura de la foto la hace un modelo de inteligencia artificial y puede equivocarse con la letra o con el nombre de un medicamento.</p>
-                </section>
-                <section>
-                  <h4 className="font-semibold text-ink">2. Revisión obligatoria</h4>
-                  <p>Antes de guardar, comprueba que cada medicamento, dosis y horario coincida con lo que indicó tu médico.</p>
-                </section>
-                <section>
-                  <h4 className="font-semibold text-ink">3. Interacciones</h4>
-                  <p>La revisión de interacciones busca casos conocidos, pero no cubre todos los posibles.</p>
-                </section>
-                <section>
-                  <h4 className="font-semibold text-ink">4. Tus datos</h4>
-                  <p>Tus recetas y recordatorios se guardan solo en este navegador. Si borras los datos del navegador, se pierden.</p>
-                </section>
-              </div>
-              <div className="px-6 pt-2 pb-6">
-                <button onClick={() => setShowTerms(false)} className="w-full rounded-2xl bg-ink py-3.5 font-semibold text-white">Entendido</button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
+        {showTerms && <AvisoLegal key="aviso" onClose={() => setShowTerms(false)} />}
       </AnimatePresence>
     </motion.div>
   );
@@ -831,17 +1088,6 @@ interface CalendarViewProps {
   toggleComplete: (med: Medication) => Promise<void>;
   key?: string;
 }
-
-// Botón redondo con contorno (← y + de los bocetos)
-const CircleButton = ({ onClick, label, children }: { onClick: () => void; label: string; children: ReactNode }) => (
-  <button
-    onClick={onClick}
-    aria-label={label}
-    className="flex h-[clamp(48px,6.5vmin,60px)] w-[clamp(48px,6.5vmin,60px)] shrink-0 items-center justify-center rounded-full border-[2.5px] border-ink bg-card text-ink hover:bg-ink hover:text-white"
-  >
-    {children}
-  </button>
-);
 
 type Draft = { id?: string; name: string; dosage: string; time: string };
 
@@ -987,21 +1233,18 @@ const CalendarView = ({ setView, requestPermission, notificationPermission, togg
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
       transition={{ duration: 0.25, ease: [0.2, 0.8, 0.2, 1] }}
-      className="min-h-dvh bg-canvas px-[clamp(16px,4vw,56px)] pt-[max(clamp(16px,3.5vh,44px),env(safe-area-inset-top))] pb-[calc(var(--nav-h)+24px)]"
+      className="min-h-dvh bg-canvas pb-[calc(var(--nav-h)+28px)]"
     >
-      <div className="mx-auto max-w-6xl">
-        <header className="flex items-center justify-between gap-4">
-          <CircleButton onClick={() => setView('dashboard')} label="Volver"><ArrowLeft className="h-[45%] w-[45%]" strokeWidth={2.5} /></CircleButton>
-          <div className="min-w-0 text-center">
-            <h2 className="truncate text-[clamp(1.2rem,3vmin,2rem)] font-semibold text-ink first-letter:uppercase">{titulo}</h2>
-            <p className="text-sm text-muted">
-              {reminders.length === 0 ? 'Sin tomas' : `${hechas} de ${reminders.length} tomadas`}
-            </p>
-          </div>
-          <CircleButton onClick={() => setDraft({ name: '', dosage: '', time: '08:00' })} label="Agregar toma"><Plus className="h-[50%] w-[50%]" strokeWidth={2.5} /></CircleButton>
-        </header>
-
-        <div ref={dayStripRef} className="relative -mx-2 my-[clamp(16px,3vh,28px)] flex gap-2.5 overflow-x-auto px-2 py-2 scrollbar-hide">
+      <Banda
+        title={<span className="block first-letter:uppercase">{titulo}</span>}
+        center
+        left={<BandaBoton onClick={() => setView('dashboard')} label="Volver"><ChevronLeft className="h-6 w-6" /></BandaBoton>}
+        right={<BandaBoton onClick={() => setDraft({ name: '', dosage: '', time: '08:00' })} label="Agregar toma"><Plus className="h-6 w-6" /></BandaBoton>}
+      >
+        <p className="-mt-1 text-center text-sm text-white/80">
+          {reminders.length === 0 ? 'Sin tomas' : `${hechas} de ${reminders.length} tomadas`}
+        </p>
+        <div ref={dayStripRef} className="relative -mx-2 mt-4 flex gap-2 overflow-x-auto px-2 py-1 scrollbar-hide">
           {days.map(dateStr => {
             const [yy, mm, dd] = dateStr.split('-').map(Number);
             const dt = new Date(yy, mm - 1, dd);
@@ -1012,28 +1255,24 @@ const CalendarView = ({ setView, requestPermission, notificationPermission, togg
                 key={dateStr}
                 data-date={dateStr}
                 onClick={() => setSelectedDate(dateStr)}
-                className={`flex h-[clamp(72px,9vmin,92px)] w-[clamp(56px,7vmin,72px)] shrink-0 flex-col items-center justify-center rounded-2xl ${isSelected ? 'bg-brand text-white shadow-[0_12px_24px_-12px_rgb(62_102_214/0.9)]' : 'bg-card text-ink shadow-soft hover:bg-brand-soft'}`}
+                className={`flex h-[clamp(64px,8.5vmin,84px)] w-[clamp(50px,6.5vmin,64px)] shrink-0 flex-col items-center justify-center rounded-2xl ${isSelected ? 'bg-card text-brand-strong shadow-[0_10px_20px_-10px_rgb(20_40_110/0.6)]' : 'bg-white/12 text-white hover:bg-white/20'}`}
               >
-                <span className={`text-xs font-medium uppercase ${isSelected ? 'text-white/80' : 'text-muted'}`}>{dt.toLocaleDateString('es-MX', { weekday: 'short' }).replace('.', '')}</span>
+                <span className={`text-[11px] font-medium uppercase ${isSelected ? 'text-muted' : 'text-white/75'}`}>{dt.toLocaleDateString('es-MX', { weekday: 'short' }).replace('.', '')}</span>
                 <span className="text-xl font-semibold">{dt.getDate()}</span>
-                {isToday && <span className={`mt-0.5 h-1 w-1 rounded-full ${isSelected ? 'bg-card' : 'bg-brand'}`} />}
+                {isToday && <span className={`mt-0.5 h-1 w-1 rounded-full ${isSelected ? 'bg-brand' : 'bg-white'}`} />}
               </button>
             );
           })}
         </div>
+      </Banda>
 
-        {notificationPermission !== 'granted' && 'Notification' in window && (
-          <button onClick={requestPermission} className="mb-5 flex w-full items-center gap-3 rounded-2xl bg-sun-soft px-4 py-3 text-left">
-            <Bell className="h-5 w-5 shrink-0 text-sun-strong" />
-            <span className="flex-1 text-sm text-ink"><b className="font-semibold">Activa los avisos</b> para que te recordemos cada toma.</span>
-            <ChevronRight className="h-5 w-5 text-sun-strong" />
-          </button>
-        )}
+      <div className={`relative mx-auto max-w-5xl ${PAD_X} ${SOLAPE}`}>
+
 
         {loading ? (
-          <div className="flex justify-center p-12"><Loader2 className="h-8 w-8 animate-spin text-brand" /></div>
+          <div className="flex justify-center rounded-[24px] bg-card p-12 shadow-soft"><Loader2 className="h-8 w-8 animate-spin text-brand" /></div>
         ) : reminders.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 rounded-[24px] border-2 border-dashed border-line p-12 text-center">
+          <div className="flex flex-col items-center gap-3 rounded-[24px] bg-card p-12 text-center shadow-soft">
             <p className="font-semibold text-ink">No hay tomas este día</p>
             <button onClick={() => setDraft({ name: '', dosage: '', time: '08:00' })} className="rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-strong">Agregar toma</button>
           </div>
@@ -1059,94 +1298,18 @@ const CalendarView = ({ setView, requestPermission, notificationPermission, togg
             </ul>
           </div>
         )}
+        {notificationPermission !== 'granted' && 'Notification' in window && (
+          <button onClick={requestPermission} className="mt-5 flex w-full items-center gap-3 rounded-2xl bg-sun-soft px-4 py-3 text-left">
+            <Bell className="h-5 w-5 shrink-0 text-sun-strong" />
+            <span className="flex-1 text-sm text-ink"><b className="font-semibold">Activa los avisos</b> para que te recordemos cada toma.</span>
+            <ChevronRight className="h-5 w-5 text-sun-strong" />
+          </button>
+        )}
       </div>
 
       <AnimatePresence>
         {draft && <MedSheet key="sheet" draft={draft} date={selectedDate} onClose={() => setDraft(null)} />}
       </AnimatePresence>
-    </motion.div>
-  );
-};
-
-interface GalleryViewProps {
-  setView: (v: View) => void;
-  key?: string;
-}
-
-const GalleryView = ({ setView }: GalleryViewProps) => {
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!auth.currentUser) return;
-
-    const q = query(
-      collection(db, 'prescriptions'),
-      where('uid', '==', auth.currentUser.uid),
-      orderBy('scannedAt', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Prescription));
-      setPrescriptions(data);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, 'list', 'prescriptions');
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 20 }}
-      transition={{ duration: 0.25, ease: [0.2, 0.8, 0.2, 1] }}
-      className="min-h-dvh bg-canvas px-[clamp(16px,4vw,56px)] pt-[max(clamp(16px,3.5vh,44px),env(safe-area-inset-top))] pb-[calc(var(--nav-h)+24px)]"
-    >
-      <div className="mx-auto max-w-6xl">
-        <header className="mb-[clamp(20px,4vh,36px)] flex items-center justify-between gap-4">
-          <CircleButton onClick={() => setView('dashboard')} label="Volver"><ArrowLeft className="h-[45%] w-[45%]" strokeWidth={2.5} /></CircleButton>
-          <div className="text-center">
-            <h2 className="text-[clamp(1.3rem,3vmin,2rem)] font-semibold text-ink">Mis recetas</h2>
-            <p className="text-sm text-muted">{prescriptions.length === 1 ? '1 receta guardada' : `${prescriptions.length} recetas guardadas`}</p>
-          </div>
-          <CircleButton onClick={() => setView('camera')} label="Escanear receta"><Plus className="h-[50%] w-[50%]" strokeWidth={2.5} /></CircleButton>
-        </header>
-
-        {loading ? (
-          <div className="flex justify-center p-12"><Loader2 className="h-8 w-8 animate-spin text-brand" /></div>
-        ) : prescriptions.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 rounded-[24px] border-2 border-dashed border-line p-12 text-center">
-            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-sun-soft text-sun"><ImageIcon className="h-7 w-7" /></span>
-            <p className="font-semibold text-ink">Aún no has escaneado recetas</p>
-            <button onClick={() => setView('camera')} className="rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-strong">Escanear receta</button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-[clamp(12px,2vmin,24px)] sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            {prescriptions.map((p, i) => (
-              <motion.div
-                key={p.id}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: Math.min(i, 10) * 0.03, ease: [0.2, 0.8, 0.2, 1] }}
-                className="tile relative aspect-[3/4] overflow-hidden rounded-[22px] bg-card shadow-soft"
-              >
-                {p.imageUrl ? (
-                  <img src={p.imageUrl} alt="Receta" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-                ) : (
-                  <div className="flex h-full items-center justify-center bg-brand-soft text-brand"><ImageIcon className="h-10 w-10" /></div>
-                )}
-                <div className="absolute inset-x-2 bottom-2 rounded-2xl bg-card/90 px-3 py-2 backdrop-blur">
-                  <p className="text-xs text-muted">{new Date(p.scannedAt?.toDate?.() || p.scannedAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                  <p className="truncate text-sm font-semibold text-ink">{p.medications?.length || 0} medicamentos</p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        )}
-      </div>
     </motion.div>
   );
 };
@@ -1592,7 +1755,13 @@ export default function App() {
   const [user, setUser] = useState<any>(null);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [confirmBorrar, setConfirmBorrar] = useState<'reminders' | 'prescriptions' | null>(null);
+  const [recetaId, setRecetaId] = useState<string | null>(null);
+
+  const actualizarAjustes = (data: Partial<UserSettings>) => {
+    if (!user) return;
+    updateDoc(doc(db, 'user_settings', user.uid), { ...data, updatedAt: serverTimestamp() })
+      .catch(error => handleFirestoreError(error, 'update', 'user_settings'));
+  };
 
   const borrarTodo = async (col: 'reminders' | 'prescriptions') => {
     if (!auth.currentUser) return;
@@ -1945,121 +2114,47 @@ export default function App() {
         )}
         {view === 'camera' && <CameraView key="camera" setView={setView} setCapturedImage={setCapturedImage} />}
         {view === 'calendar' && <CalendarView key="calendar" setView={setView} requestPermission={requestPermission} notificationPermission={notificationPermission} toggleComplete={toggleComplete} />}
-        {view === 'gallery' && <GalleryView key="gallery" setView={setView} />}
+        {view === 'gallery' && <GalleryView key="gallery" setView={setView} onOpen={(id) => { setRecetaId(id); setView('receta'); }} />}
+        {view === 'receta' && <RecetaView key="receta" id={recetaId} setView={setView} />}
+        {view === 'perfil' && (
+          <PerfilView
+            key="perfil"
+            userSettings={userSettings}
+            onUpdate={actualizarAjustes}
+            notificationPermission={notificationPermission}
+            requestPermission={requestPermission}
+            onTestAlarm={handleTestAlarm}
+            installPrompt={installPrompt}
+            onInstall={handleInstall}
+            onBorrar={borrarTodo}
+          />
+        )}
         {view === 'preview' && <PreviewView key="preview" setView={setView} capturedImage={capturedImage} userSettings={userSettings} />}
       </AnimatePresence>
 
-      {/* Ajustes */}
-      <AnimatePresence>
-        {showSettings && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] flex items-end justify-center bg-ink/40 backdrop-blur-sm md:items-center md:p-6"
-            onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}
-          >
-            <motion.div
-              initial={{ y: 60, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 60, opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 380, damping: 34 }}
-              className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-[32px] bg-card p-6 pb-[max(24px,env(safe-area-inset-bottom))] shadow-2xl md:rounded-[32px] md:p-8"
-            >
-              <div className="mb-6 flex items-center justify-between">
-                <h3 className="text-2xl font-semibold text-ink">Ajustes</h3>
-                <button onClick={() => setShowSettings(false)} aria-label="Cerrar" className="flex h-10 w-10 items-center justify-center rounded-full bg-canvas text-muted hover:text-ink">
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                <label className="block rounded-3xl bg-canvas p-5">
-                  <span className="mb-2 block text-sm font-medium text-muted">¿Cómo te llamas?</span>
-                  <input
-                    value={userSettings?.name || ''}
-                    placeholder="Tu nombre"
-                    maxLength={30}
-                    onChange={async (e) => {
-                      if (!user) return;
-                      await updateDoc(doc(db, 'user_settings', user.uid), { name: e.target.value, updatedAt: serverTimestamp() });
-                    }}
-                    className="w-full rounded-2xl border border-line bg-card px-4 py-3.5 text-lg text-ink outline-none placeholder:text-faint focus:border-brand"
-                  />
-                </label>
-
-                <label className="block rounded-3xl bg-brand-soft p-5">
-                  <span className="mb-1 flex items-center gap-2 font-semibold text-ink">
-                    <Clock3 className="h-4 w-4 text-brand" /> ¿A qué hora empieza tu día?
-                  </span>
-                  <span className="mb-4 block text-sm text-muted">
-                    Es la base para programar tus medicinas: si tomas algo cada 8 horas, la primera toma será a esta hora.
-                  </span>
-                  <input
-                    type="time"
-                    value={userSettings?.dayStartTime || '08:00'}
-                    onChange={async (e) => {
-                      if (!user) return;
-                      await updateDoc(doc(db, 'user_settings', user.uid), { dayStartTime: e.target.value, updatedAt: serverTimestamp() });
-                    }}
-                    className="w-full rounded-2xl border border-brand-tint bg-card px-6 py-4 text-center text-2xl font-semibold tabular-nums text-brand-strong outline-none focus:border-brand"
-                  />
-                </label>
-
-                <div className="rounded-3xl border border-line p-5">
-                  <p className="mb-3 text-sm font-medium text-muted">Borrar datos de este dispositivo</p>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <button onClick={() => setConfirmBorrar('reminders')} className="flex items-center justify-center gap-2 rounded-2xl bg-bad-soft px-4 py-3 text-sm font-semibold text-bad hover:bg-[#fbdde1]">
-                      <Trash2 className="h-4 w-4" /> Recordatorios
-                    </button>
-                    <button onClick={() => setConfirmBorrar('prescriptions')} className="flex items-center justify-center gap-2 rounded-2xl bg-bad-soft px-4 py-3 text-sm font-semibold text-bad hover:bg-[#fbdde1]">
-                      <Trash2 className="h-4 w-4" /> Recetas guardadas
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <button onClick={() => setShowSettings(false)} className="mt-6 w-full rounded-2xl bg-ink py-4 font-semibold text-white hover:bg-[#2a355a]">
-                Listo
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <ConfirmModal
-        isOpen={confirmBorrar !== null}
-        onClose={() => setConfirmBorrar(null)}
-        onConfirm={() => confirmBorrar && borrarTodo(confirmBorrar)}
-        title={confirmBorrar === 'prescriptions' ? '¿Borrar todas las recetas?' : '¿Borrar todos los recordatorios?'}
-        message="Se eliminan de este dispositivo y no se pueden recuperar."
-      />
-
-      {/* Barra flotante (boceto) */}
+      {/* Barra inferior con 4 pestañas */}
       {view !== 'login' && view !== 'camera' && view !== 'preview' && (
-        <nav className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-[max(14px,env(safe-area-inset-bottom))]">
-          <div className="pointer-events-auto flex w-[min(340px,100%)] items-center justify-between rounded-full bg-card/90 p-2 shadow-[0_12px_32px_-12px_rgb(28_38_69/0.28)] ring-1 ring-line backdrop-blur-xl">
+        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl">
+          <div className="mx-auto grid h-[var(--nav-bar)] max-w-xl grid-cols-4">
             {([
-              { v: 'dashboard', label: 'Inicio', Icon: Home },
-              { v: 'gallery', label: 'Mis recetas', Icon: ImageIcon },
-              { v: 'calendar', label: 'Calendario', Icon: History },
-            ] as const).map(({ v, label, Icon }) => (
-              <button
-                key={v}
-                onClick={() => setView(v)}
-                aria-label={label}
-                title={label}
-                className={`relative flex h-[clamp(48px,6vmin,56px)] w-[clamp(48px,6vmin,56px)] items-center justify-center rounded-full ${view === v ? 'text-brand' : 'text-faint hover:text-ink'}`}
-              >
-                {view === v && (
-                  <motion.span layoutId="nav-bg" className="absolute inset-0 rounded-full bg-brand-soft" transition={{ type: 'spring', stiffness: 500, damping: 38 }} />
-                )}
-                <Icon className="relative h-6 w-6" strokeWidth={2.2} />
-                {view === v && (
-                  <motion.span layoutId="nav-dot" className="absolute bottom-1.5 h-1 w-1 rounded-full bg-brand" transition={{ type: 'spring', stiffness: 500, damping: 38 }} />
-                )}
-              </button>
-            ))}
+              { v: 'dashboard', label: 'Inicio', Icon: Home, activo: ['dashboard'] },
+              { v: 'gallery', label: 'Recetas', Icon: FileText, activo: ['gallery', 'receta'] },
+              { v: 'calendar', label: 'Tomas', Icon: CalendarDays, activo: ['calendar'] },
+              { v: 'perfil', label: 'Perfil', Icon: User, activo: ['perfil'] },
+            ] as const).map(({ v, label, Icon, activo }) => {
+              const on = (activo as readonly string[]).includes(view);
+              return (
+                <button
+                  key={v}
+                  onClick={() => setView(v)}
+                  className={`relative flex flex-col items-center justify-center gap-1 ${on ? 'text-brand' : 'text-faint hover:text-ink'}`}
+                >
+                  {on && <motion.span layoutId="nav-indicador" className="absolute top-0 h-[3px] w-10 rounded-b-full bg-brand" transition={{ type: 'spring', stiffness: 500, damping: 38 }} />}
+                  <Icon className="h-6 w-6" strokeWidth={on ? 2.3 : 1.9} />
+                  <span className={`text-[11px] ${on ? 'font-semibold' : 'font-medium'}`}>{label}</span>
+                </button>
+              );
+            })}
           </div>
         </nav>
       )}
