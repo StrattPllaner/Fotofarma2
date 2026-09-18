@@ -32,7 +32,13 @@ import {
   History,
   CalendarDays,
   FileText,
-  HelpCircle
+  HelpCircle,
+  Search,
+  MapPin,
+  LocateFixed,
+  Store,
+  Navigation,
+  Phone
 } from 'lucide-react';
 import {
   auth,
@@ -55,7 +61,7 @@ import {
 } from './localdb';
 
 // --- Types ---
-type View = 'login' | 'dashboard' | 'camera' | 'calendar' | 'preview' | 'perfil';
+type View = 'login' | 'dashboard' | 'camera' | 'calendar' | 'preview' | 'perfil' | 'gallery' | 'receta' | 'farmacias';
 
 interface Medication {
   id?: string;
@@ -544,6 +550,431 @@ const DashboardView = ({ setView, reminders, onToggle, userName }: DashboardProp
             </div>
           )}
           </div>
+        </section>
+      </div>
+    </motion.div>
+  );
+};
+
+interface GalleryViewProps {
+  setView: (v: View) => void;
+  onOpen: (id: string) => void;
+  key?: string;
+}
+
+const GalleryView = ({ setView, onOpen }: GalleryViewProps) => {
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    const q = query(
+      collection(db, 'prescriptions'),
+      where('uid', '==', auth.currentUser.uid),
+      orderBy('scannedAt', 'desc')
+    );
+    return onSnapshot(q, (snapshot) => {
+      setPrescriptions(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Prescription)));
+      setLoading(false);
+    }, (error) => handleFirestoreError(error, 'list', 'prescriptions'));
+  }, []);
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="min-h-dvh bg-canvas pb-[calc(var(--nav-h)+28px)]">
+      <Banda
+        title="Mis recetas"
+        center
+        left={<BandaBoton onClick={() => setView('calendar')} label="Volver"><ChevronLeft className="h-6 w-6" /></BandaBoton>}
+        right={<BandaBoton onClick={() => setView('camera')} label="Escanear receta"><Plus className="h-6 w-6" /></BandaBoton>}
+      />
+      <div className={`relative mx-auto max-w-5xl ${PAD_X} ${SOLAPE}`}>
+        {loading ? (
+          <div className="flex justify-center rounded-[28px] bg-card p-12 shadow-soft"><Loader2 className="h-8 w-8 animate-spin text-brand" /></div>
+        ) : prescriptions.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 rounded-[28px] bg-card p-12 text-center shadow-soft">
+            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-lav-soft text-lav"><FileText className="h-7 w-7" /></span>
+            <p className="font-semibold text-ink">Aún no has escaneado recetas</p>
+            <button onClick={() => setView('camera')} className="rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-strong">Escanear receta</button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-[clamp(12px,2vmin,20px)] sm:grid-cols-3 lg:grid-cols-4">
+            {prescriptions.map((p, i) => (
+              <motion.button
+                key={p.id}
+                onClick={() => onOpen(p.id)}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: Math.min(i, 10) * 0.03, ease: [0.2, 0.8, 0.2, 1] }}
+                className="tile overflow-hidden rounded-[22px] bg-card text-left shadow-soft"
+              >
+                <span className="block aspect-[4/3] bg-brand-soft">
+                  {p.imageUrl
+                    ? <img src={p.imageUrl} alt="Receta" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                    : <span className="flex h-full items-center justify-center text-brand"><FileText className="h-9 w-9" /></span>}
+                </span>
+                <span className="block px-4 py-3">
+                  <span className="block truncate font-semibold text-ink">{p.medications?.length || 0} medicamentos</span>
+                  <span className="block text-sm text-muted">{new Date(p.scannedAt?.toDate?.() || p.scannedAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                </span>
+              </motion.button>
+            ))}
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+};
+
+const RecetaView = ({ id, setView }: { id: string | null; setView: (v: View) => void; key?: string }) => {
+  const [receta, setReceta] = useState<Prescription | null | undefined>(undefined);
+  const [confirmar, setConfirmar] = useState(false);
+
+  useEffect(() => {
+    if (!id) { setReceta(null); return; }
+    return onSnapshot(doc(db, 'prescriptions', id), (snap) => {
+      setReceta(snap.exists() ? ({ id: snap.id, ...snap.data() } as Prescription) : null);
+    });
+  }, [id]);
+
+  const eliminar = async () => {
+    if (!id || !auth.currentUser) return;
+    try {
+      const tomas = await getDocs(query(collection(db, 'reminders'), where('uid', '==', auth.currentUser.uid), where('prescriptionId', '==', id)));
+      await Promise.all(tomas.docs.map(d => deleteDoc(d.ref)));
+      await deleteDoc(doc(db, 'prescriptions', id));
+      setView('gallery');
+    } catch (error) {
+      handleFirestoreError(error, 'delete', `prescriptions/${id}`);
+    }
+  };
+
+  const meds: any[] = receta?.medications || [];
+
+  return (
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.25, ease: [0.2, 0.8, 0.2, 1] }} className="min-h-dvh bg-canvas pb-[calc(var(--nav-h)+28px)]">
+      <Banda
+        title="Detalle de receta"
+        center
+        left={<BandaBoton onClick={() => setView('gallery')} label="Volver"><ChevronLeft className="h-6 w-6" /></BandaBoton>}
+        right={<LogoTile />}
+      />
+      <div className={`relative mx-auto max-w-5xl ${PAD_X} ${SOLAPE}`}>
+        {receta === undefined ? (
+          <div className="flex justify-center rounded-[28px] bg-card p-12 shadow-soft"><Loader2 className="h-8 w-8 animate-spin text-brand" /></div>
+        ) : receta === null ? (
+          <div className="rounded-[28px] bg-card p-12 text-center text-muted shadow-soft">Esta receta ya no existe.</div>
+        ) : (
+          <div className="grid gap-6 wide:grid-cols-[1fr_1.1fr] wide:items-start">
+            <section className="rounded-[28px] bg-card p-4 shadow-soft">
+              <div className="aspect-[4/3] overflow-hidden rounded-[20px] bg-brand-soft">
+                {receta.imageUrl
+                  ? <img src={receta.imageUrl} alt="Foto de la receta" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                  : <span className="flex h-full items-center justify-center text-brand"><FileText className="h-12 w-12" /></span>}
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 px-2 pt-4 pb-1">
+                <div>
+                  <p className="font-semibold text-ink">Receta escaneada</p>
+                  <p className="text-sm text-muted">{new Date(receta.scannedAt?.toDate?.() || receta.scannedAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                </div>
+                <span className="flex items-center gap-1.5 rounded-full bg-mint-soft px-3 py-1 text-sm font-semibold text-mint-strong">
+                  <Check className="h-4 w-4" /> En tu calendario
+                </span>
+              </div>
+            </section>
+
+            <section className="wide:pt-[clamp(44px,7vh,64px)]">
+              <SeccionTitulo>Medicamentos</SeccionTitulo>
+              <ul className="overflow-hidden rounded-[24px] bg-card shadow-soft">
+                {meds.length === 0 && <li className="p-6 text-center text-sm text-muted">Sin medicamentos</li>}
+                {meds.map((m, i) => (
+                  <li key={i} className="flex items-center gap-4 border-b border-line px-5 py-4 last:border-0">
+                    <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${toneFor(m.name || '').tile}`}><Pill className="h-5 w-5" /></span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold text-ink">{m.name}</span>
+                      <span className="block truncate text-sm text-muted">{[m.dosage, m.frequency].filter(Boolean).join(' · ')}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-6 space-y-3">
+                <button onClick={() => setView('calendar')} className="w-full rounded-2xl bg-brand py-4 font-semibold text-white shadow-[0_16px_30px_-16px_rgb(62_102_214/0.9)] hover:bg-brand-strong">
+                  Ver en el calendario
+                </button>
+                <button onClick={() => setConfirmar(true)} className="w-full rounded-2xl py-3 text-sm font-semibold text-bad hover:bg-bad-soft">
+                  Eliminar receta
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
+      </div>
+      <ConfirmModal
+        isOpen={confirmar}
+        onClose={() => setConfirmar(false)}
+        onConfirm={eliminar}
+        title="¿Eliminar esta receta?"
+        message="También se quitan sus tomas del calendario."
+      />
+    </motion.div>
+  );
+};
+
+// --- Farmacias: dónde comprar tus medicinas (no vendemos nada) ---
+// Las farmacias cercanas vienen de OpenStreetMap (servicio Overpass). No hay datos
+// públicos de existencias, así que la app lo dice y ofrece llamar o ir.
+const OVERPASS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+];
+
+interface Farmacia {
+  id: string;
+  nombre: string;
+  direccion: string;
+  lat: number;
+  lon: number;
+  distancia: number; // metros
+  horario?: string;
+  telefono?: string;
+}
+
+const distanciaM = (a: { lat: number; lon: number }, b: { lat: number; lon: number }) => {
+  const R = 6371000, rad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * rad, dLon = (b.lon - a.lon) * rad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+};
+
+const formatDistancia = (m: number) => (m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(1)} km`);
+
+const DIAS: Record<string, string> = { Mo: 'Lu', Tu: 'Ma', We: 'Mi', Th: 'Ju', Fr: 'Vi', Sa: 'Sá', Su: 'Do', PH: 'Festivos' };
+const formatHorario = (h?: string) => {
+  if (!h) return undefined;
+  if (h.trim() === '24/7') return 'Abierta 24 horas';
+  return h.replace(/\b(Mo|Tu|We|Th|Fr|Sa|Su|PH)\b/g, d => DIAS[d]).replace(/;\s*/g, ' · ').replace(/\boff\b/g, 'cerrado');
+};
+
+const buscarFarmacias = async (lat: number, lon: number, radio: number): Promise<Farmacia[]> => {
+  const q = `[out:json][timeout:20];(node["amenity"="pharmacy"](around:${radio},${lat},${lon});way["amenity"="pharmacy"](around:${radio},${lat},${lon}););out center 60;`;
+  let ultimoError: unknown;
+  for (const url of OVERPASS) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 15000);
+    try {
+      const res = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: q }), signal: ctrl.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      return (json.elements || [])
+        .map((e: any): Farmacia | null => {
+          const p = e.type === 'node' ? { lat: e.lat, lon: e.lon } : e.center;
+          if (!p) return null;
+          const tg = e.tags || {};
+          const calle = [tg['addr:street'], tg['addr:housenumber']].filter(Boolean).join(' ');
+          return {
+            id: `${e.type}/${e.id}`,
+            nombre: tg.name || tg.brand || 'Farmacia',
+            direccion: [calle, tg['addr:suburb'] || tg['addr:city']].filter(Boolean).join(', '),
+            lat: p.lat,
+            lon: p.lon,
+            distancia: distanciaM({ lat, lon }, p),
+            horario: formatHorario(tg.opening_hours),
+            telefono: tg.phone || tg['contact:phone'],
+          };
+        })
+        .filter(Boolean)
+        .sort((a: Farmacia, b: Farmacia) => a.distancia - b.distancia)
+        .slice(0, 25);
+    } catch (err) {
+      ultimoError = err;
+    } finally {
+      clearTimeout(t);
+    }
+  }
+  throw ultimoError;
+};
+
+const FarmaciasView = (_: { key?: string }) => {
+  const [busqueda, setBusqueda] = useState('');
+  const [misMeds, setMisMeds] = useState<string[]>([]);
+  const [estado, setEstado] = useState<'inicio' | 'ubicando' | 'buscando' | 'listo' | 'sin-permiso' | 'error'>('inicio');
+  const [farmacias, setFarmacias] = useState<Farmacia[]>([]);
+
+  // Nombres de las medicinas que ya tienes en tus tomas, para buscarlas con un toque
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    return onSnapshot(query(collection(db, 'reminders'), where('uid', '==', auth.currentUser.uid)), (snap) => {
+      const nombres = new Map<string, string>();
+      snap.docs.forEach((d: any) => {
+        const n = String(d.data().name || '').trim();
+        if (n) nombres.set(n.toLowerCase(), n);
+      });
+      setMisMeds([...nombres.values()].sort((a, b) => a.localeCompare(b, 'es')));
+    });
+  }, []);
+
+  const localizar = () => {
+    if (!('geolocation' in navigator)) { setEstado('sin-permiso'); return; }
+    setEstado('ubicando');
+    navigator.geolocation.getCurrentPosition(
+      async ({ coords }) => {
+        setEstado('buscando');
+        try {
+          let lista = await buscarFarmacias(coords.latitude, coords.longitude, 3000);
+          if (lista.length < 3) lista = await buscarFarmacias(coords.latitude, coords.longitude, 10000);
+          setFarmacias(lista);
+          setEstado('listo');
+        } catch {
+          setEstado('error');
+        }
+      },
+      () => setEstado('sin-permiso'),
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 }
+    );
+  };
+
+  const med = busqueda.trim();
+  const mapsBusqueda = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(med ? `farmacia ${med}` : 'farmacia')}`;
+  const cargando = estado === 'ubicando' || estado === 'buscando';
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="min-h-dvh bg-canvas pb-[calc(var(--nav-h)+28px)]">
+      <Banda title="Farmacias" center right={<LogoTile />}>
+        <label className="mt-3 flex items-center gap-3 rounded-2xl bg-card px-4 py-3 text-ink shadow-[0_10px_24px_-14px_rgb(20_40_110/0.6)]">
+          <Search className="h-5 w-5 shrink-0 text-muted" />
+          <input
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+            placeholder="¿Qué medicamento necesitas?"
+            className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-faint"
+            enterKeyHint="search"
+          />
+          {busqueda && (
+            <button onClick={() => setBusqueda('')} aria-label="Borrar búsqueda" className="flex h-7 w-7 items-center justify-center rounded-full bg-canvas text-muted">
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </label>
+      </Banda>
+
+      <div className={`relative mx-auto grid max-w-5xl gap-6 ${PAD_X} ${SOLAPE} wide:grid-cols-[1fr_1.35fr] wide:items-start`}>
+        {/* Columna izquierda: qué buscas y dónde estás */}
+        <div className="space-y-6">
+          <section className="rounded-[28px] bg-card p-[clamp(20px,3.4vmin,28px)] shadow-soft">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-soft text-brand"><MapPin className="h-6 w-6" /></span>
+            <h2 className="mt-4 text-lg font-semibold text-ink">¿Te quedaste sin {med || 'medicinas'}?</h2>
+            <p className="mt-1 text-sm text-muted">Te mostramos las farmacias más cercanas para que vayas a comprarlo. Usamos tu ubicación solo para esta búsqueda.</p>
+            <button
+              onClick={localizar}
+              disabled={cargando}
+              className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-brand py-3.5 font-semibold text-white shadow-[0_16px_30px_-16px_rgb(62_102_214/0.9)] hover:bg-brand-strong disabled:opacity-70"
+            >
+              {cargando ? <Loader2 className="h-5 w-5 animate-spin" /> : <LocateFixed className="h-5 w-5" />}
+              {estado === 'ubicando' ? 'Buscando tu ubicación…' : estado === 'buscando' ? 'Buscando farmacias…' : estado === 'listo' ? 'Actualizar' : 'Buscar farmacias cercanas'}
+            </button>
+          </section>
+
+          {misMeds.length > 0 && (
+            <section>
+              <SeccionTitulo>Tus medicamentos</SeccionTitulo>
+              <div className="flex flex-wrap gap-2">
+                {misMeds.map(n => {
+                  const on = n.toLowerCase() === med.toLowerCase();
+                  return (
+                    <button
+                      key={n}
+                      onClick={() => setBusqueda(on ? '' : n)}
+                      className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ${on ? 'bg-brand text-white' : 'bg-card text-ink shadow-soft hover:bg-brand-soft'}`}
+                    >
+                      <Pill className={`h-4 w-4 ${on ? 'text-white' : toneFor(n).tile.split(' ')[1]}`} /> {n}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+        </div>
+
+        {/* Columna derecha: resultados */}
+        <section className="wide:pt-[clamp(44px,7vh,64px)]">
+          {estado === 'inicio' && (
+            <div className="rounded-[24px] border-2 border-dashed border-line p-8 text-center text-sm text-muted">
+              Toca <b className="text-ink">Buscar farmacias cercanas</b> para ver dónde conseguir tu medicina.
+            </div>
+          )}
+
+          {cargando && (
+            <ul className="space-y-3">
+              {[0, 1, 2].map(i => <li key={i} className="h-24 animate-pulse rounded-[22px] bg-card shadow-soft" />)}
+            </ul>
+          )}
+
+          {(estado === 'sin-permiso' || estado === 'error') && (
+            <div className="rounded-[24px] bg-card p-6 text-center shadow-soft">
+              <p className="font-semibold text-ink">{estado === 'sin-permiso' ? 'No pudimos ver tu ubicación' : 'No pudimos cargar las farmacias'}</p>
+              <p className="mt-1 text-sm text-muted">{estado === 'sin-permiso' ? 'Permite el acceso a tu ubicación o busca directamente en el mapa.' : 'Revisa tu conexión e intenta de nuevo, o busca en el mapa.'}</p>
+              <a href={mapsBusqueda} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex items-center gap-2 rounded-full bg-brand-soft px-5 py-2.5 text-sm font-semibold text-brand-strong hover:bg-[#dde6fc]">
+                <MapPin className="h-4 w-4" /> Abrir en Google Maps
+              </a>
+            </div>
+          )}
+
+          {estado === 'listo' && (
+            <>
+              <SeccionTitulo>{farmacias.length ? `${farmacias.length} farmacias cerca de ti` : 'Farmacias cerca de ti'}</SeccionTitulo>
+              <p className="mb-4 flex items-start gap-2 rounded-2xl bg-sun-soft px-4 py-3 text-sm text-ink">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-sun-strong" />
+                <span>No conocemos la existencia de cada tienda. {med ? <>Llama y pregunta por <b>{med}</b> antes de ir.</> : 'Llama antes de ir para confirmar que lo tengan.'}</span>
+              </p>
+              {farmacias.length === 0 ? (
+                <div className="rounded-[24px] bg-card p-6 text-center shadow-soft">
+                  <p className="text-sm text-muted">No encontramos farmacias registradas cerca.</p>
+                  <a href={mapsBusqueda} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-brand">Buscar en Google Maps <ChevronRight className="h-4 w-4" /></a>
+                </div>
+              ) : (
+                <ul className="space-y-3">
+                  {farmacias.map((f, i) => {
+                    const tono = toneFor(f.nombre);
+                    return (
+                      <motion.li
+                        key={f.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.25, delay: Math.min(i, 8) * 0.03, ease: [0.2, 0.8, 0.2, 1] }}
+                        className="rounded-[22px] bg-card p-4 shadow-soft"
+                      >
+                        <div className="flex items-start gap-3">
+                          <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${tono.tile}`}><Store className="h-5 w-5" /></span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-semibold text-ink">{f.nombre}</p>
+                            {f.direccion && <p className="truncate text-sm text-muted">{f.direccion}</p>}
+                            {f.horario && <p className={`mt-1 truncate text-xs ${f.horario.startsWith('Abierta 24') ? 'font-semibold text-mint-strong' : 'text-muted'}`}>{f.horario}</p>}
+                          </div>
+                          <span className="shrink-0 rounded-full bg-canvas px-2.5 py-1 text-xs font-semibold text-muted tabular-nums">{formatDistancia(f.distancia)}</span>
+                        </div>
+                        <div className="mt-3 flex gap-2 pl-14">
+                          <a
+                            href={`https://www.google.com/maps/dir/?api=1&destination=${f.lat},${f.lon}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-strong"
+                          >
+                            <Navigation className="h-4 w-4" /> Cómo llegar
+                          </a>
+                          {f.telefono && (
+                            <a href={`tel:${f.telefono.replace(/[^\d+]/g, '')}`} className="flex items-center gap-1.5 rounded-full bg-brand-soft px-4 py-2 text-sm font-semibold text-brand-strong hover:bg-[#dde6fc]">
+                              <Phone className="h-4 w-4" /> Llamar
+                            </a>
+                          )}
+                        </div>
+                      </motion.li>
+                    );
+                  })}
+                </ul>
+              )}
+              <p className="mt-4 text-center text-xs text-faint">Datos de farmacias: © colaboradores de OpenStreetMap</p>
+            </>
+          )}
         </section>
       </div>
     </motion.div>
@@ -1117,6 +1548,14 @@ const CalendarView = ({ setView, requestPermission, notificationPermission, togg
             </ul>
           </div>
         )}
+        <button onClick={() => setView('gallery')} className="tile mt-5 flex w-full items-center gap-4 rounded-[22px] bg-card px-5 py-4 text-left shadow-soft">
+          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-lav-soft text-lav"><FileText className="h-5 w-5" /></span>
+          <span className="flex-1">
+            <span className="block font-semibold text-ink">Mis recetas</span>
+            <span className="block text-sm text-muted">Las recetas que has escaneado</span>
+          </span>
+          <ChevronRight className="h-5 w-5 text-faint" />
+        </button>
         {notificationPermission !== 'granted' && 'Notification' in window && (
           <button onClick={requestPermission} className="mt-5 flex w-full items-center gap-3 rounded-2xl bg-sun-soft px-4 py-3 text-left">
             <Bell className="h-5 w-5 shrink-0 text-sun-strong" />
@@ -1202,6 +1641,15 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
     try {
       const batch = writeBatch(db);
 
+      // Save prescription
+      const pRef = doc(collection(db, 'prescriptions'));
+      batch.set(pRef, {
+        uid: auth.currentUser.uid,
+        imageUrl: capturedImage,
+        scannedAt: serverTimestamp(),
+        medications: results
+      });
+
       // Generate reminders
       const today = new Date();
       
@@ -1242,6 +1690,7 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
               endDate: endDateStr,
               comments: med.comments || '',
               completed: false,
+              prescriptionId: pRef.id
             });
           }
         }
@@ -1250,7 +1699,7 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
       await batch.commit();
       setView('calendar');
     } catch (error) {
-      handleFirestoreError(error, 'write', 'reminders');
+      handleFirestoreError(error, 'write', 'prescriptions/reminders');
     } finally {
       setIsSaving(false);
     }
@@ -1564,6 +2013,8 @@ export default function App() {
   const [user, setUser] = useState<any>(null);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [recetaId, setRecetaId] = useState<string | null>(null);
+
   const actualizarAjustes = (data: Partial<UserSettings>) => {
     if (!user) return;
     updateDoc(doc(db, 'user_settings', user.uid), { ...data, updatedAt: serverTimestamp() })
@@ -1921,6 +2372,9 @@ export default function App() {
         )}
         {view === 'camera' && <CameraView key="camera" setView={setView} setCapturedImage={setCapturedImage} />}
         {view === 'calendar' && <CalendarView key="calendar" setView={setView} requestPermission={requestPermission} notificationPermission={notificationPermission} toggleComplete={toggleComplete} />}
+        {view === 'gallery' && <GalleryView key="gallery" setView={setView} onOpen={(id) => { setRecetaId(id); setView('receta'); }} />}
+        {view === 'receta' && <RecetaView key="receta" id={recetaId} setView={setView} />}
+        {view === 'farmacias' && <FarmaciasView key="farmacias" />}
         {view === 'perfil' && (
           <PerfilView
             key="perfil"
@@ -1940,10 +2394,11 @@ export default function App() {
       {/* Barra inferior con 4 pestañas */}
       {view !== 'login' && view !== 'camera' && view !== 'preview' && (
         <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl">
-          <div className="mx-auto grid h-[var(--nav-bar)] max-w-md grid-cols-3">
+          <div className="mx-auto grid h-[var(--nav-bar)] max-w-xl grid-cols-4">
             {([
               { v: 'dashboard', label: 'Inicio', Icon: Home, activo: ['dashboard'] },
-              { v: 'calendar', label: 'Tomas', Icon: CalendarDays, activo: ['calendar'] },
+              { v: 'calendar', label: 'Tomas', Icon: CalendarDays, activo: ['calendar', 'gallery', 'receta'] },
+              { v: 'farmacias', label: 'Farmacias', Icon: Store, activo: ['farmacias'] },
               { v: 'perfil', label: 'Perfil', Icon: User, activo: ['perfil'] },
             ] as const).map(({ v, label, Icon, activo }) => {
               const on = (activo as readonly string[]).includes(view);
