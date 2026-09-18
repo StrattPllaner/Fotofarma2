@@ -22,7 +22,8 @@ import {
   ShieldCheck,
   AlertTriangle,
   Info,
-  ShieldAlert
+  ShieldAlert,
+  Home
 } from 'lucide-react';
 import {
   auth,
@@ -228,6 +229,7 @@ interface DashboardProps {
   onOpenSettings: () => void;
   installPrompt: any;
   onInstall: () => void;
+  onToggle: (med: Medication) => void;
   key?: string;
 }
 
@@ -257,14 +259,14 @@ const AlarmOverlay = ({ med, onConfirm, onStop }: { med: Medication, onConfirm: 
       <div className="w-full space-y-4">
         <button 
           onClick={onConfirm}
-          className="w-full py-5 bg-white text-emerald-600 rounded-3xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 active:scale-95 transition-transform"
+          className="w-full py-5 bg-white text-emerald-600 rounded-3xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 transition-transform"
         >
           <Check className="w-6 h-6" />
           REGISTRAR TOMA
         </button>
         <button 
           onClick={onStop}
-          className="w-full py-4 bg-emerald-700/50 text-white rounded-3xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform"
+          className="w-full py-4 bg-emerald-700/50 text-white rounded-3xl font-bold flex items-center justify-center gap-2 transition-transform"
         >
            SALTAR / LUEGO
         </button>
@@ -273,141 +275,170 @@ const AlarmOverlay = ({ med, onConfirm, onStop }: { med: Medication, onConfirm: 
   );
 };
 
-const DashboardView = ({ setView, user, reminders, onTestAlarm, onOpenSettings, installPrompt, onInstall }: DashboardProps) => {
+const DashboardView = ({ setView, reminders, onTestAlarm, onOpenSettings, installPrompt, onInstall, onToggle }: DashboardProps) => {
   const completedToday = reminders.filter(r => r.completed).length;
   const totalToday = reminders.length;
   const progress = totalToday > 0 ? Math.round((completedToday / totalToday) * 100) : 0;
+  const pendientes = reminders.filter(r => !r.completed);
+  const ordenadas = [...pendientes, ...reminders.filter(r => r.completed)];
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 20 }}
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      className="min-h-screen bg-zinc-50 p-6 pb-24"
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ duration: 0.25, ease: [0.2, 0.8, 0.2, 1] }}
+      className="flex h-dvh flex-col overflow-y-auto bg-zinc-50 px-[clamp(16px,4vw,56px)] pt-[clamp(16px,3.5vh,44px)] pb-[calc(var(--nav-h)+clamp(16px,2.5vh,28px))] wide:overflow-hidden tall:overflow-hidden"
     >
-      <header className="flex items-center justify-between mb-8">
+      <header className="mb-[clamp(16px,3vh,32px)] flex shrink-0 items-center justify-between gap-4">
         <div>
-          <p className="text-zinc-500 text-sm font-medium">Hola</p>
-          <h1 className="text-2xl font-bold text-zinc-900">Tu Salud Hoy</h1>
+          <p className="text-[clamp(0.85rem,1.6vmin,1.05rem)] font-medium text-zinc-500">
+            {new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </p>
+          <h1 className="text-[clamp(1.6rem,4vmin,2.75rem)] font-bold leading-tight text-zinc-900">Tu salud hoy</h1>
         </div>
-        <div className="flex gap-2">
-          <button 
+        <div className="flex items-center gap-2">
+          {installPrompt && (
+            <button
+              onClick={onInstall}
+              className="hidden items-center gap-2 rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white sm:flex"
+            >
+              <Download className="h-4 w-4" /> Instalar app
+            </button>
+          )}
+          <button
             onClick={onOpenSettings}
-            className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center text-zinc-400 border border-zinc-100"
-            title="Ajustes de Horario"
+            className="flex h-[clamp(40px,5.5vmin,56px)] w-[clamp(40px,5.5vmin,56px)] items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 shadow-sm hover:text-zinc-900"
+            title="Ajustes de horario"
           >
-            <Bell className="w-5 h-5" />
+            <Bell className="h-[45%] w-[45%]" />
           </button>
         </div>
       </header>
 
-      {/* PWA Install Banner */}
       {installPrompt && (
-        <div className="mb-8 p-4 bg-indigo-600 rounded-[32px] text-white flex items-center justify-between shadow-xl shadow-indigo-100">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-white/20 rounded-2xl flex items-center justify-center">
-              <Download className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold opacity-80 uppercase leading-none mb-1">¡Instala FotoFarma!</p>
-              <p className="text-sm font-black">Alarmas siempre activas</p>
-            </div>
-          </div>
-          <button 
-            onClick={onInstall}
-            className="px-4 py-2 bg-white text-indigo-600 rounded-2xl font-bold text-xs active:scale-95 transition-transform"
-          >
-            INSTALAR
-          </button>
-        </div>
+        <button
+          onClick={onInstall}
+          className="mb-4 flex shrink-0 items-center justify-between rounded-2xl bg-zinc-900 px-4 py-3 text-left text-white sm:hidden"
+        >
+          <span className="flex items-center gap-3">
+            <Download className="h-5 w-5" />
+            <span className="text-sm font-semibold">Instala FotoFarma para recibir alarmas</span>
+          </span>
+          <ChevronRight className="h-5 w-5 opacity-70" />
+        </button>
       )}
 
-      {/* Progress Card */}
-      <div className="bg-emerald-600 rounded-[32px] p-6 text-white shadow-xl shadow-emerald-100 mb-8 relative overflow-hidden">
-        <div className="relative z-10">
-          <p className="text-emerald-100 text-sm font-medium mb-1">Cumplimiento diario</p>
-          <h2 className="text-4xl font-bold mb-4">{progress}%</h2>
-          <div className="w-full bg-emerald-700/50 h-2 rounded-full overflow-hidden">
-            <motion.div 
-              initial={{ width: 0 }}
-              animate={{ width: `${progress}%` }}
-              className="h-full bg-white"
-            />
-          </div>
-          <p className="mt-4 text-sm text-emerald-50">
-            {totalToday === 0 ? 'No tienes tomas para hoy.' : 
-             progress === 100 ? '¡Excelente! Has tomado todo.' : 
-             `Te faltan ${totalToday - completedToday} dosis por tomar.`}
-          </p>
-        </div>
-        <div className="absolute -right-8 -top-8 w-32 h-32 bg-white/10 rounded-full blur-3xl" />
-      </div>
-
-      {/* Bento Grid */}
-      <div className="grid grid-cols-2 gap-4 mb-8">
-        <button 
-          onClick={() => setView('camera')}
-          className="col-span-2 aspect-[2/1] bg-white p-6 rounded-[32px] border border-zinc-100 shadow-sm flex flex-col justify-between items-start group active:scale-95 transition-all text-left"
-        >
-          <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-            <Camera className="w-6 h-6" />
-          </div>
+      <div className="grid flex-1 grid-cols-2 gap-[clamp(12px,2.2vmin,28px)] wide:min-h-0 wide:grid-cols-10 wide:grid-rows-6 tall:min-h-0 tall:grid-cols-2 tall:grid-rows-6">
+        {/* Cumplimiento */}
+        <section className="relative col-span-2 flex flex-col justify-between overflow-hidden rounded-[clamp(24px,3.5vmin,40px)] bg-emerald-600 p-[clamp(20px,3.2vmin,40px)] text-white shadow-lg shadow-emerald-600/15 wide:col-span-4 wide:col-start-1 wide:row-span-3 wide:row-start-1 tall:col-span-1 tall:col-start-1 tall:row-span-2 tall:row-start-1">
           <div>
-            <h3 className="font-bold text-zinc-900 text-lg">Analizar Receta</h3>
-            <p className="text-zinc-500 text-sm">Escanea con IA tus medicinas.</p>
+            <p className="text-[clamp(0.9rem,1.7vmin,1.15rem)] font-medium text-emerald-100">Cumplimiento diario</p>
+            <p className="mt-1 text-[clamp(2.75rem,9vmin,6rem)] font-bold leading-none tracking-tight">{progress}%</p>
           </div>
+          <div className="mt-5">
+            <div className="h-2.5 w-full overflow-hidden rounded-full bg-emerald-800/40">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${progress}%` }}
+                transition={{ duration: 0.6, ease: [0.2, 0.8, 0.2, 1] }}
+                className="h-full rounded-full bg-white"
+              />
+            </div>
+            <p className="mt-3 text-[clamp(0.9rem,1.7vmin,1.1rem)] text-emerald-50">
+              {totalToday === 0 ? 'No tienes tomas para hoy.' :
+               progress === 100 ? '¡Excelente! Has tomado todo.' :
+               `Te faltan ${totalToday - completedToday} de ${totalToday} tomas.`}
+            </p>
+          </div>
+        </section>
+
+        {/* Analizar receta */}
+        <button
+          onClick={() => setView('camera')}
+          className="tile group col-span-2 flex min-h-[clamp(150px,24vh,260px)] flex-col justify-between rounded-[clamp(24px,3.5vmin,40px)] border border-zinc-200/80 bg-white p-[clamp(20px,3.2vmin,40px)] text-left shadow-sm wide:col-span-6 wide:col-start-5 wide:row-span-4 wide:row-start-1 wide:min-h-0 tall:col-span-1 tall:col-start-2 tall:row-span-2 tall:row-start-1 tall:min-h-0"
+        >
+          <span className="flex h-[clamp(48px,8vmin,88px)] w-[clamp(48px,8vmin,88px)] items-center justify-center rounded-[28%] bg-emerald-50 text-emerald-600 transition-colors duration-200 group-hover:bg-emerald-600 group-hover:text-white">
+            <Camera className="h-1/2 w-1/2" />
+          </span>
+          <span className="hidden flex-wrap gap-2 wide:flex">
+            {['Toma la foto', 'Revisa dosis y horas', 'Guarda tu calendario'].map((t, n) => (
+              <span key={t} className="flex items-center gap-2 rounded-full border border-zinc-200 px-3 py-1.5 text-[clamp(0.8rem,1.5vmin,0.95rem)] text-zinc-500">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-zinc-100 text-[11px] font-bold text-zinc-600">{n + 1}</span>
+                {t}
+              </span>
+            ))}
+          </span>
+          <span className="flex items-end justify-between gap-4">
+            <span>
+              <span className="block text-[clamp(1.25rem,3.4vmin,2.4rem)] font-bold leading-tight text-zinc-900">Analizar receta</span>
+              <span className="mt-1 block text-[clamp(0.9rem,1.8vmin,1.15rem)] text-zinc-500">Toma una foto y arma tus horarios.</span>
+            </span>
+            <ArrowRight className="hidden h-[clamp(24px,3.5vmin,36px)] w-[clamp(24px,3.5vmin,36px)] shrink-0 text-zinc-300 transition-all duration-200 group-hover:translate-x-1 group-hover:text-emerald-600 sm:block" />
+          </span>
         </button>
 
-        <button 
+        {/* Calendario */}
+        <button
           onClick={() => setView('calendar')}
-          className="aspect-square bg-white p-6 rounded-[32px] border border-zinc-100 shadow-sm flex flex-col justify-between items-start group active:scale-95 transition-all text-left"
+          className="tile group col-span-1 flex aspect-[1/0.85] flex-col justify-between rounded-[clamp(24px,3.5vmin,40px)] border border-zinc-200/80 bg-white p-[clamp(16px,2.8vmin,36px)] text-left shadow-sm wide:col-span-3 wide:col-start-5 wide:row-span-2 wide:row-start-5 wide:aspect-auto tall:col-start-1 tall:row-span-2 tall:row-start-3 tall:aspect-auto"
         >
-          <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-            <CalendarIcon className="w-6 h-6" />
-          </div>
-          <h3 className="font-bold text-zinc-900">Calendario</h3>
+          <span className="flex h-[clamp(44px,6.5vmin,72px)] w-[clamp(44px,6.5vmin,72px)] items-center justify-center rounded-[28%] bg-indigo-50 text-indigo-600 transition-colors duration-200 group-hover:bg-indigo-600 group-hover:text-white">
+            <CalendarIcon className="h-1/2 w-1/2" />
+          </span>
+          <span className="text-[clamp(1rem,2.4vmin,1.6rem)] font-bold text-zinc-900">Calendario</span>
         </button>
 
-        <button 
+        {/* Galería */}
+        <button
           onClick={() => setView('gallery')}
-          className="aspect-square bg-white p-6 rounded-[32px] border border-zinc-100 shadow-sm flex flex-col justify-between items-start group active:scale-95 transition-all text-left"
+          className="tile group col-span-1 flex aspect-[1/0.85] flex-col justify-between rounded-[clamp(24px,3.5vmin,40px)] border border-zinc-200/80 bg-white p-[clamp(16px,2.8vmin,36px)] text-left shadow-sm wide:col-span-3 wide:col-start-8 wide:row-span-2 wide:row-start-5 wide:aspect-auto tall:col-start-2 tall:row-span-2 tall:row-start-3 tall:aspect-auto"
         >
-          <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600 group-hover:bg-amber-600 group-hover:text-white transition-colors">
-            <ImageIcon className="w-6 h-6" />
-          </div>
-          <h3 className="font-bold text-zinc-900">Galería</h3>
+          <span className="flex h-[clamp(44px,6.5vmin,72px)] w-[clamp(44px,6.5vmin,72px)] items-center justify-center rounded-[28%] bg-amber-50 text-amber-600 transition-colors duration-200 group-hover:bg-amber-500 group-hover:text-white">
+            <ImageIcon className="h-1/2 w-1/2" />
+          </span>
+          <span className="text-[clamp(1rem,2.4vmin,1.6rem)] font-bold text-zinc-900">Mis recetas</span>
         </button>
-      </div>
 
-      {/* Upcoming Task */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between px-1">
-          <h3 className="font-bold text-zinc-900">Siguiente toma</h3>
-          <div className="flex gap-4">
-            <button 
-              onClick={onTestAlarm}
-              className="text-indigo-600 text-xs font-semibold px-2 py-1 bg-indigo-50 rounded-lg"
-            >
-              Probar Alarma 🔔
-            </button>
-            <button onClick={() => setView('calendar')} className="text-emerald-600 text-sm font-semibold">Ver todo</button>
-          </div>
-        </div>
-        {reminders.filter(r => !r.completed).length === 0 ? (
-          <div className="p-6 bg-white rounded-3xl border border-dashed border-zinc-200 text-center text-zinc-400">
-            Todo al día por ahora
-          </div>
-        ) : (
-          <div className="bg-white p-4 rounded-[24px] border border-zinc-100 shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 bg-zinc-50 rounded-2xl flex items-center justify-center text-emerald-600 font-bold">
-              {reminders.find(r => !r.completed)?.time}
-            </div>
-            <div className="flex-1">
-              <h4 className="font-bold text-zinc-900">{reminders.find(r => !r.completed)?.name}</h4>
-              <p className="text-xs text-zinc-500">{reminders.find(r => !r.completed)?.dosage}</p>
+        {/* Tomas de hoy */}
+        <section className="col-span-2 flex min-h-0 flex-col rounded-[clamp(24px,3.5vmin,40px)] border border-zinc-200/80 bg-white p-[clamp(16px,2.6vmin,32px)] shadow-sm wide:col-span-4 wide:col-start-1 wide:row-span-3 wide:row-start-4 tall:col-span-2 tall:col-start-1 tall:row-span-2 tall:row-start-5">
+          <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
+            <h2 className="text-[clamp(1rem,2.2vmin,1.4rem)] font-bold text-zinc-900">Tomas de hoy</h2>
+            <div className="flex items-center gap-1">
+              <button onClick={onTestAlarm} className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-semibold text-zinc-600 hover:bg-zinc-200">
+                Probar alarma
+              </button>
+              <button onClick={() => setView('calendar')} className="rounded-full px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50">
+                Ver todo
+              </button>
             </div>
           </div>
-        )}
+          {ordenadas.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-zinc-200 p-6 text-center text-sm text-zinc-400">
+              Todo al día por ahora
+            </div>
+          ) : (
+            <ul className="-mx-1 flex-1 space-y-1 overflow-y-auto px-1 wide:min-h-0 tall:min-h-0">
+              {ordenadas.map(med => (
+                <li key={med.id}>
+                  <button
+                    onClick={() => onToggle(med)}
+                    className="flex w-full items-center gap-3 rounded-2xl p-2 text-left hover:bg-zinc-50"
+                  >
+                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 transition-colors duration-200 ${med.completed ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-zinc-200 text-transparent'}`}>
+                      <Check className="h-5 w-5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className={`block truncate font-semibold text-zinc-900 ${med.completed ? 'text-zinc-400 line-through' : ''}`}>{med.name}</span>
+                      <span className="block truncate text-xs text-zinc-500">{med.dosage}</span>
+                    </span>
+                    <span className="shrink-0 text-sm font-semibold tabular-nums text-zinc-500">{med.time}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
     </motion.div>
   );
@@ -618,7 +649,7 @@ const CameraView = ({ setView, setCapturedImage }: { setView: (v: View) => void,
   };
 
   return (
-    <div className="relative h-screen bg-black overflow-hidden">
+    <div className="relative h-dvh bg-black overflow-hidden">
       <video 
         ref={videoRef} 
         autoPlay 
@@ -628,13 +659,22 @@ const CameraView = ({ setView, setCapturedImage }: { setView: (v: View) => void,
       <canvas ref={canvasRef} className="hidden" />
       
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-10 left-10 w-16 h-16 border-t-4 border-l-4 border-white rounded-tl-lg" />
-        <div className="absolute top-10 right-10 w-16 h-16 border-t-4 border-r-4 border-white rounded-tr-lg" />
-        <div className="absolute bottom-32 left-10 w-16 h-16 border-b-4 border-l-4 border-white rounded-bl-lg" />
-        <div className="absolute bottom-32 right-10 w-16 h-16 border-b-4 border-r-4 border-white rounded-br-lg" />
+        <div className="absolute top-[12%] left-[8%] w-16 h-16 border-t-4 border-l-4 border-white rounded-tl-lg" />
+        <div className="absolute top-[12%] right-[8%] w-16 h-16 border-t-4 border-r-4 border-white rounded-tr-lg" />
+        <div className="absolute bottom-[22%] left-[8%] w-16 h-16 border-b-4 border-l-4 border-white rounded-bl-lg" />
+        <div className="absolute bottom-[22%] right-[8%] w-16 h-16 border-b-4 border-r-4 border-white rounded-br-lg" />
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 p-8 flex items-center justify-between bg-gradient-to-t from-black/60 to-transparent">
+      <button
+        onClick={() => setView('dashboard')}
+        aria-label="Cerrar"
+        className="absolute top-[max(16px,env(safe-area-inset-top))] left-4 z-10 w-11 h-11 bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-black/60"
+      >
+        <X className="w-6 h-6" />
+      </button>
+
+      <div className="absolute bottom-0 left-0 right-0 px-8 pt-8 pb-[max(32px,env(safe-area-inset-bottom))] bg-gradient-to-t from-black/60 to-transparent">
+      <div className="mx-auto max-w-md flex items-center justify-between">
         <button 
           onClick={() => setView('gallery')}
           className="w-14 h-14 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-all"
@@ -644,7 +684,7 @@ const CameraView = ({ setView, setCapturedImage }: { setView: (v: View) => void,
 
         <button 
           onClick={takePhoto}
-          className="w-20 h-20 bg-white rounded-full border-4 border-white/30 shadow-2xl active:scale-95 transition-transform"
+          className="w-20 h-20 bg-white rounded-full border-4 border-white/30 shadow-2xl transition-transform"
         />
 
         <button 
@@ -653,6 +693,7 @@ const CameraView = ({ setView, setCapturedImage }: { setView: (v: View) => void,
         >
           <CalendarIcon className="w-7 h-7" />
         </button>
+      </div>
       </div>
     </div>
   );
@@ -722,6 +763,16 @@ const CalendarView = ({ setView, requestPermission, notificationPermission, togg
     }
   };
 
+  const dayStripRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // Mantener el día elegido centrado en la tira de fechas
+    const el = dayStripRef.current?.querySelector<HTMLElement>(`[data-date="${selectedDate}"]`);
+    const strip = dayStripRef.current;
+    if (el && strip) {
+      strip.scrollTo({ left: el.offsetLeft - strip.clientWidth / 2 + el.clientWidth / 2, behavior: 'smooth' });
+    }
+  }, [selectedDate]);
+
   const days = Array.from({ length: 31 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() + i - 15); // Show 15 days before and 15 days after today
@@ -733,14 +784,15 @@ const CalendarView = ({ setView, requestPermission, notificationPermission, togg
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
-      className="min-h-screen bg-zinc-50 p-6"
+      className="min-h-dvh bg-zinc-50 px-[clamp(16px,4vw,56px)] pt-[clamp(16px,3.5vh,44px)] pb-[calc(var(--nav-h)+24px)]"
     >
+      <div className="mx-auto max-w-6xl">
       <header className="flex items-center justify-between mb-8">
-        <button onClick={() => setView('camera')} className="p-2 -ml-2 text-zinc-600">
+        <button onClick={() => setView('dashboard')} className="w-10 h-10 -ml-2 rounded-full flex items-center justify-center text-zinc-600 hover:bg-zinc-100">
           <ChevronLeft className="w-6 h-6" />
         </button>
         <div className="text-center">
-          <h2 className="text-xl font-bold text-zinc-900">
+          <h2 className="text-[clamp(1.25rem,3vmin,2rem)] font-bold text-zinc-900 first-letter:uppercase">
             {(() => {
               const [y, m, d] = selectedDate.split('-').map(Number);
               return new Date(y, m - 1, d).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -770,7 +822,7 @@ const CalendarView = ({ setView, requestPermission, notificationPermission, togg
         </div>
       </header>
 
-      <div className="flex gap-3 overflow-x-auto pb-6 scrollbar-hide">
+      <div ref={dayStripRef} className="relative -mx-2 mb-4 flex gap-3 overflow-x-auto px-2 py-2 scrollbar-hide">
         {days.map(dateStr => {
           const [y, m, dayNum] = dateStr.split('-').map(Number);
           const d = new Date(y, m - 1, dayNum);
@@ -778,8 +830,9 @@ const CalendarView = ({ setView, requestPermission, notificationPermission, togg
           return (
             <button 
               key={dateStr}
+              data-date={dateStr}
               onClick={() => setSelectedDate(dateStr)}
-              className={`flex-shrink-0 w-16 h-20 rounded-2xl flex flex-col items-center justify-center transition-all ${isSelected ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-100' : 'bg-white text-zinc-900 border border-zinc-200'}`}
+              className={`flex-shrink-0 w-[clamp(60px,7vmin,80px)] h-[clamp(76px,9vmin,100px)] rounded-2xl flex flex-col items-center justify-center transition-all ${isSelected ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-100' : 'bg-white text-zinc-900 border border-zinc-200'}`}
             >
               <span className="text-xs uppercase font-medium opacity-60">{d.toLocaleDateString('es-ES', { weekday: 'short' })}</span>
               <span className="text-xl font-bold">{d.getDate()}</span>
@@ -789,7 +842,7 @@ const CalendarView = ({ setView, requestPermission, notificationPermission, togg
       </div>
 
       <div className="space-y-4">
-        <h3 className="font-semibold text-zinc-900 px-1">Recordatorios</h3>
+        <h3 className="font-semibold text-zinc-900 px-1 md:text-lg">Recordatorios</h3>
         {loading ? (
           <div className="flex justify-center p-8"><Loader2 className="w-8 h-8 animate-spin text-emerald-600" /></div>
         ) : reminders.length === 0 ? (
@@ -797,7 +850,8 @@ const CalendarView = ({ setView, requestPermission, notificationPermission, togg
             No hay recordatorios para este día
           </div>
         ) : (
-          reminders.map(med => (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {reminders.map(med => (
             <div key={med.id} className={`bg-white p-4 rounded-2xl border border-zinc-100 shadow-sm flex items-center gap-4 transition-all ${med.completed ? 'opacity-60 grayscale-[0.5]' : ''}`}>
               <button 
                 onClick={() => toggleComplete(med)}
@@ -848,8 +902,10 @@ const CalendarView = ({ setView, requestPermission, notificationPermission, togg
                 </button>
               </div>
             </div>
-          ))
+          ))}
+          </div>
         )}
+      </div>
       </div>
       <ConfirmModal 
         isOpen={showConfirm}
@@ -910,13 +966,14 @@ const GalleryView = ({ setView }: GalleryViewProps) => {
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
-      className="min-h-screen bg-white"
+      className="min-h-dvh bg-white pb-[calc(var(--nav-h)+24px)]"
     >
-      <div className="p-4 flex items-center justify-between border-b border-zinc-100">
-        <button onClick={() => setView('camera')} className="w-10 h-10 bg-zinc-100 rounded-full flex items-center justify-center text-zinc-600">
+      <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-zinc-100">
+      <div className="mx-auto max-w-6xl px-[clamp(16px,4vw,56px)] py-4 flex items-center justify-between">
+        <button onClick={() => setView('dashboard')} className="w-10 h-10 bg-zinc-100 rounded-full flex items-center justify-center text-zinc-600">
           <ChevronLeft className="w-6 h-6" />
         </button>
-        <h2 className="text-2xl font-bold text-zinc-900">Mis Recetas</h2>
+        <h2 className="text-[clamp(1.4rem,3vmin,2rem)] font-bold text-zinc-900">Mis recetas</h2>
         <div className="flex items-center gap-2">
           <button 
             onClick={() => setShowConfirm(true)}
@@ -927,16 +984,17 @@ const GalleryView = ({ setView }: GalleryViewProps) => {
           </button>
         </div>
       </div>
+      </div>
 
-      <div className="p-4">
+      <div className="mx-auto max-w-6xl px-[clamp(16px,4vw,56px)] py-6">
         {loading ? (
           <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-emerald-600" /></div>
         ) : prescriptions.length === 0 ? (
           <div className="text-center p-12 text-zinc-400">No has escaneado ninguna receta aún</div>
         ) : (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-[clamp(12px,2vmin,24px)] sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {prescriptions.map(p => (
-              <div key={p.id} className="aspect-[3/4] bg-zinc-100 rounded-2xl overflow-hidden relative group shadow-sm">
+              <div key={p.id} className="tile aspect-[3/4] bg-zinc-100 rounded-2xl overflow-hidden relative group shadow-sm">
                 <img src={p.imageUrl} alt="Prescription" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/60 to-transparent text-white">
                   <p className="text-[10px] opacity-80">{new Date(p.scannedAt?.toDate?.() || p.scannedAt).toLocaleDateString()}</p>
@@ -1095,13 +1153,13 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="fixed inset-0 z-50 mx-auto w-full max-w-xl bg-black flex flex-col"
+      className="fixed inset-0 z-50 bg-black flex flex-col"
     >
       <div className="flex-1 relative">
         <img 
           src={capturedImage} 
           alt="Captured Prescription" 
-          className="w-full h-full object-cover opacity-60"
+          className="w-full h-full object-cover md:object-contain opacity-60"
           referrerPolicy="no-referrer"
         />
         
@@ -1112,7 +1170,7 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
             <p className="text-sm text-zinc-400">Extrayendo medicamentos con Gemini</p>
           </div>
         ) : error ? (
-          <div className="absolute inset-x-0 bottom-0 p-8 bg-white rounded-t-[32px] text-center">
+          <div className="absolute inset-x-0 bottom-0 p-8 bg-white rounded-t-[32px] text-center md:inset-x-auto md:right-8 md:bottom-8 md:w-[420px] md:rounded-[32px] md:shadow-2xl">
             <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4">
               <X className="w-8 h-8" />
             </div>
@@ -1126,8 +1184,13 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
             </button>
           </div>
         ) : (
-          <div className="absolute inset-x-0 bottom-0 p-6 bg-white rounded-t-[32px] max-h-[85vh] overflow-y-auto">
-            <div className="w-12 h-1.5 bg-zinc-200 rounded-full mx-auto mb-6" />
+          <motion.div
+            initial={{ y: 40, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.3, ease: [0.2, 0.8, 0.2, 1] }}
+            className="absolute inset-x-0 bottom-0 p-6 bg-white rounded-t-[32px] max-h-[85dvh] overflow-y-auto md:inset-x-auto md:right-0 md:top-0 md:bottom-0 md:max-h-none md:w-[min(560px,50vw)] md:rounded-none md:rounded-l-[32px] md:p-8"
+          >
+            <div className="w-12 h-1.5 bg-zinc-200 rounded-full mx-auto mb-6 md:hidden" />
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-zinc-900">Configurar Horarios</h3>
               <span className="text-xs font-semibold px-2 py-1 bg-emerald-100 text-emerald-700 rounded-lg">IA Detectado</span>
@@ -1312,7 +1375,7 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
                 )}
               </button>
             </div>
-          </div>
+          </motion.div>
         )}
       </div>
     </motion.div>
@@ -1629,7 +1692,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-50 md:bg-zinc-200/60 font-sans text-zinc-900 selection:bg-emerald-100 selection:text-emerald-900">
+    <div className="min-h-dvh bg-zinc-50 font-sans text-zinc-900 selection:bg-emerald-100 selection:text-emerald-900">
       <AnimatePresence>
         {activeAlarm && (
           <AlarmOverlay 
@@ -1643,8 +1706,6 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* En pantallas grandes la app se muestra como una columna centrada */}
-      <div className={view === 'login' ? '' : 'mx-auto w-full max-w-xl min-h-screen md:border-x md:border-zinc-200/70 md:shadow-sm'}>
       <AnimatePresence mode="wait">
         {view === 'login' && <Portada key="login" onStart={() => { markStarted(); setView('dashboard'); }} />}
         {view === 'dashboard' && (
@@ -1657,6 +1718,7 @@ export default function App() {
             onOpenSettings={() => setShowSettings(true)}
             installPrompt={installPrompt}
             onInstall={handleInstall}
+            onToggle={toggleComplete}
           />
         )}
         {view === 'camera' && <CameraView key="camera" setView={setView} setCapturedImage={setCapturedImage} />}
@@ -1664,17 +1726,17 @@ export default function App() {
         {view === 'gallery' && <GalleryView key="gallery" setView={setView} />}
         {view === 'preview' && <PreviewView key="preview" setView={setView} capturedImage={capturedImage} userSettings={userSettings} />}
       </AnimatePresence>
-      </div>
 
       {/* Settings Modal */}
       <AnimatePresence>
         {showSettings && (
-          <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/60 backdrop-blur-sm md:items-center md:p-6" onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}>
             <motion.div 
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
-              className="bg-white w-full max-w-lg rounded-t-[40px] p-8 shadow-2xl"
+              transition={{ type: 'spring', stiffness: 380, damping: 36 }}
+              className="bg-white w-full max-w-lg rounded-t-[40px] md:rounded-[40px] p-8 pb-[max(32px,env(safe-area-inset-bottom))] shadow-2xl"
             >
               <div className="flex items-center justify-between mb-8">
                 <h3 className="text-2xl font-black text-zinc-900">Ajustes de Horario</h3>
@@ -1718,7 +1780,7 @@ export default function App() {
 
               <button 
                 onClick={() => setShowSettings(false)}
-                className="w-full py-5 bg-zinc-900 text-white font-bold rounded-2xl shadow-xl active:scale-95 transition-all"
+                className="w-full py-5 bg-zinc-900 text-white font-bold rounded-2xl shadow-xl transition-all"
               >
                 Guardar y Cerrar
               </button>
@@ -1729,19 +1791,35 @@ export default function App() {
       
       {/* Persist bottom navigation on dashboard/calendar/gallery */}
       {view !== 'login' && view !== 'camera' && view !== 'preview' && (
-        <nav className="fixed bottom-0 inset-x-0 mx-auto w-full max-w-xl bg-white/80 backdrop-blur-lg border-t border-zinc-100 p-4 pb-8 flex justify-around items-center z-40">
-          <button onClick={() => setView('dashboard')} className={`p-2 transition-colors ${view === 'dashboard' ? 'text-emerald-600' : 'text-zinc-400'}`}>
-            <User className="w-6 h-6" />
-          </button>
-          <button 
-            onClick={() => setView('camera')} 
-            className="w-14 h-14 bg-emerald-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-emerald-200 -mt-8 active:scale-95 transition-all"
-          >
-            <Camera className="w-7 h-7" />
-          </button>
-          <button onClick={() => setView('calendar')} className={`p-2 transition-colors ${view === 'calendar' ? 'text-emerald-600' : 'text-zinc-400'}`}>
-            <CalendarIcon className="w-6 h-6" />
-          </button>
+        <nav className="fixed inset-x-0 bottom-0 z-40 h-[var(--nav-h)] border-t border-zinc-200/80 bg-white/85 pb-[env(safe-area-inset-bottom)] backdrop-blur-lg">
+          <div className="mx-auto flex h-full max-w-md items-center justify-around px-4 md:max-w-lg">
+            {([
+              { v: 'dashboard', label: 'Inicio', Icon: Home },
+              { v: 'camera', label: 'Escanear', Icon: Camera },
+              { v: 'calendar', label: 'Calendario', Icon: CalendarIcon },
+            ] as const).map(({ v, label, Icon }) => v === 'camera' ? (
+              <button
+                key={v}
+                onClick={() => setView('camera')}
+                aria-label={label}
+                className="-mt-8 flex h-[clamp(56px,7vmin,68px)] w-[clamp(56px,7vmin,68px)] items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-lg shadow-emerald-600/25 hover:bg-emerald-700"
+              >
+                <Camera className="h-1/2 w-1/2" />
+              </button>
+            ) : (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={`relative flex flex-col items-center gap-1 rounded-xl px-4 py-1.5 transition-colors ${view === v ? 'text-emerald-700' : 'text-zinc-400 hover:text-zinc-700'}`}
+              >
+                <Icon className="h-6 w-6" />
+                <span className="text-[11px] font-semibold">{label}</span>
+                {view === v && (
+                  <motion.span layoutId="nav-dot" className="absolute -bottom-1 h-1 w-1 rounded-full bg-emerald-600" transition={{ type: 'spring', stiffness: 500, damping: 35 }} />
+                )}
+              </button>
+            ))}
+          </div>
         </nav>
       )}
     </div>

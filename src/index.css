@@ -1,8 +1,82 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&display=swap');
 @import "tailwindcss";
 
+/* Tablero que llena la pantalla: horizontal (laptop, iPad acostado) y vertical (iPad parado) */
+@custom-variant wide (@media (min-width: 768px) and (orientation: landscape) and (min-height: 560px));
+@custom-variant tall (@media (min-width: 640px) and (orientation: portrait) and (min-height: 860px));
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Outfit", sans-serif;
   --font-serif: "Fraunces", ui-serif, Georgia, serif;
+}
+
+/* Alto de la barra inferior; el contenido deja este espacio libre */
+:root {
+  --nav-h: calc(72px + env(safe-area-inset-bottom));
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (min-width: 768px) {
+  :root { --nav-h: calc(80px + env(safe-area-inset-bottom)); }
+}
+
+/* Celular acostado: barra más baja para dejar sitio al contenido */
+@media (max-height: 500px) {
+  :root { --nav-h: calc(60px + env(safe-area-inset-bottom)); }
+}
+
+html, body { background: #fafafa; overscroll-behavior-y: none; }
+
+/* Animación de toque: todos los botones se hunden un poco al presionarlos */
+button {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition:
+    transform 180ms var(--ease-out),
+    background-color 200ms ease,
+    color 200ms ease,
+    border-color 200ms ease,
+    box-shadow 200ms ease,
+    opacity 200ms ease;
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.96);
+  transition-duration: 90ms;
+}
+
+button:focus-visible {
+  outline: 2px solid #059669;
+  outline-offset: 3px;
+}
+
+/* Tarjetas grandes: se elevan al pasar el cursor y se hunden al tocarlas */
+.tile {
+  transition:
+    transform 220ms var(--ease-out),
+    box-shadow 220ms var(--ease-out),
+    border-color 200ms ease;
+}
+
+@media (hover: hover) {
+  .tile:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 30px -12px rgb(24 24 27 / 0.18);
+  }
+}
+
+.tile:active {
+  transform: scale(0.98);
+  transition-duration: 90ms;
+}
+
+.scrollbar-hide { scrollbar-width: none; }
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }
