@@ -20,13 +20,12 @@ jobs:
           npm install
           npm run build
         env:
-          # URL pública de tu Cloudflare Worker (proxy/worker.js). Sirve las rutas /api/* (IA)
-          # y /similares|/benavides (precios). Configúrala en:
-          #   Settings > Secrets and variables > Actions > Variables > New repository variable
-          #   Nombre: VITE_PROXY_URL   Valor: https://fotofarma-proxy.<tu-subdominio>.workers.dev
-          VITE_PROXY_URL: ${{ vars.VITE_PROXY_URL }}
-          # (opcional) Si algún día alojas el backend en otro sitio, define VITE_API_URL aparte.
-          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          # Llave de Gemini para el análisis de recetas con IA (se llama directo desde el navegador).
+          # Se inyecta al bundle con el prefijo VITE_. Configúrala en:
+          #   Settings > Secrets and variables > Actions > Secrets > New repository secret
+          #   Nombre: VITE_GEMINI_API_KEY   Valor: tu llave de https://aistudio.google.com/app/apikey
+          # Usa una llave SIN facturación (solo capa gratuita), ya que queda embebida en el sitio público.
+          VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
 
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4

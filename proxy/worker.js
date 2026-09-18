@@ -7,21 +7,13 @@ const UA = 'Mozilla/5.0 (FotoFarma; +https://strattpllaner.github.io/Fotofarma2/
 const SIMILARES = 'https://www.farmaciasdesimilares.com';
 const BENAVIDES = 'https://www.benavides.com.mx';
 
-// Cabeceras CORS: el navegador (GitHub Pages) hace una petición previa (preflight)
-// OPTIONS antes de cada POST con JSON. Sin esto, el análisis con IA falla en producción.
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
-
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
+      'Access-Control-Allow-Origin': '*',
       'Cache-Control': 'public, max-age=300',
-      ...CORS,
     },
   });
 
@@ -109,107 +101,11 @@ async function benavidesBuscar(q) {
   }));
 }
 
-// --- Gemini (análisis de recetas con IA) ---
-// La API key vive como secreto del Worker (wrangler secret put GEMINI_API_KEY),
-// nunca se expone en el frontend público de GitHub Pages.
-const GEMINI_MODEL = 'gemini-3-flash-preview';
-
-async function geminiGenerar(env, body) {
-  const key = env && env.GEMINI_API_KEY;
-  if (!key) throw new Error('El Worker no tiene configurada GEMINI_API_KEY (usa: wrangler secret put GEMINI_API_KEY).');
-
-  const r = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`,
-    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-  );
-  const data = await r.json();
-  if (!r.ok) throw new Error(data?.error?.message || `Gemini respondió ${r.status}`);
-
-  const text = data?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
-  if (!text) throw new Error('La IA no devolvió una respuesta legible.');
-  return JSON.parse(text);
-}
-
-async function analizarReceta(env, imageDataUrl) {
-  if (!imageDataUrl) throw new Error('No se recibió ninguna imagen.');
-  const base64 = imageDataUrl.includes(',') ? imageDataUrl.split(',')[1] : imageDataUrl;
-
-  const prompt =
-    'Analiza esta receta médica y extrae una lista de medicamentos. Para cada medicamento, identifica el nombre comercial o genérico, la dosis (ej. 500mg), la frecuencia (ej. cada 8 horas), la duración del tratamiento (ej. 7 días, o \'indefinido\') y cualquier comentario o nota adicional del médico (ej. \'tomar después de comer\'). Devuelve los resultados estrictamente en formato JSON según el esquema proporcionado.';
-
-  return geminiGenerar(env, {
-    contents: [
-      {
-        role: 'user',
-        parts: [{ text: prompt }, { inlineData: { mimeType: 'image/jpeg', data: base64 } }],
-      },
-    ],
-    generationConfig: {
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: 'ARRAY',
-        items: {
-          type: 'OBJECT',
-          properties: {
-            name: { type: 'STRING' },
-            dosage: { type: 'STRING' },
-            frequency: { type: 'STRING' },
-            duration: { type: 'STRING' },
-            comments: { type: 'STRING' },
-          },
-          required: ['name', 'dosage', 'frequency'],
-        },
-      },
-    },
-  });
-}
-
-async function auditarSeguridad(env, newMeds, historyMeds) {
-  const prompt = `Actúa como un experto en farmacología clínica y seguridad del paciente.
-Analiza la interacción entre los NUEVOS medicamentos de una receta y el HISTORIAL médico del paciente.
-
-NUEVOS MEDICAMENTOS: ${JSON.stringify(newMeds)}
-HISTORIAL (lo que ya toma): ${JSON.stringify(historyMeds)}
-
-TAREAS:
-1. Busca interacciones medicamentosas peligrosas entre los nuevos y los existentes.
-2. Advierte sobre dosis potencialmente altas o frecuencias inusuales.
-3. Proporciona consejos de seguridad (ej. "no tomar con alcohol", "tomar con alimentos").
-4. Asigna un "Puntaje de Seguridad" de 0 a 100.
-
-Devuelve un JSON estrictamente con este esquema:
-{
-  "safetyScore": number,
-  "warnings": string[],
-  "interactions": { "medA": string, "medB": string, "risk": "low"|"medium"|"high", "description": string }[],
-  "recommendations": string[]
-}`;
-
-  return geminiGenerar(env, {
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: { responseMimeType: 'application/json' },
-  });
-}
-
-async function manejar(request, env) {
+async function manejar(request) {
   const url = new URL(request.url);
-
-  // Respuesta al preflight CORS del navegador.
-  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
-
   const q = (url.searchParams.get('q') || '').trim().slice(0, 60);
   try {
     switch (url.pathname) {
-      case '/api/analyze-prescription': {
-        if (request.method !== 'POST') return json({ error: 'Usa POST' }, 405);
-        const { image } = await request.json();
-        return json(await analizarReceta(env, image));
-      }
-      case '/api/security-audit': {
-        if (request.method !== 'POST') return json({ error: 'Usa POST' }, 405);
-        const { newMeds, historyMeds } = await request.json();
-        return json(await auditarSeguridad(env, newMeds, historyMeds));
-      }
       case '/similares/buscar':
         return json(q ? await similaresBuscar(q) : []);
       case '/similares/sucursales': {
@@ -221,20 +117,11 @@ async function manejar(request, env) {
       case '/benavides/buscar':
         return json(q ? await benavidesBuscar(q) : []);
       default:
-        return json({
-          ok: true,
-          rutas: [
-            '/api/analyze-prescription (POST)',
-            '/api/security-audit (POST)',
-            '/similares/buscar?q=',
-            '/similares/sucursales?lat=&lon=&sku=',
-            '/benavides/buscar?q=',
-          ],
-        });
+        return json({ ok: true, rutas: ['/similares/buscar?q=', '/similares/sucursales?lat=&lon=&sku=', '/benavides/buscar?q='] });
     }
   } catch (err) {
-    return json({ error: 'PROXY_ERROR', message: String(err?.message || err) }, 502);
+    return json({ error: String(err?.message || err) }, 502);
   }
 }
 
-export default { fetch: (request, env) => manejar(request, env) };
+export default { fetch: manejar };

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, Component, ErrorInfo, ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
+import { GoogleGenAI, Type } from '@google/genai';
 import { 
   Camera, 
   Calendar as CalendarIcon, 
@@ -92,53 +93,94 @@ interface Prescription {
   medications: any[];
 }
 
+// Backend opcional para notificaciones push (server.ts). En GitHub Pages no hay backend,
+// así que queda vacío y el registro de push se omite (ver el guard !API_URL más abajo).
+const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
 // --- Gemini Service ---
-// Backend de la IA. En GitHub Pages no hay servidor Express: las rutas /api/* las sirve
-// el Cloudflare Worker (proxy/worker.js). Si VITE_API_URL no está definido, usamos VITE_PROXY_URL
-// (el mismo Worker), así solo necesitas configurar una URL. En local, server.ts responde en el mismo origen.
-const API_URL = (import.meta.env.VITE_API_URL || import.meta.env.VITE_PROXY_URL || '').replace(/\/$/, '');
-const analyzePrescription = async (base64Image: string) => {
-  try {
-    const response = await fetch(`${API_URL}/api/analyze-prescription`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ image: base64Image }),
-    });
+// La IA (Gemini) se llama directamente desde el navegador con @google/genai. La llave se inyecta
+// al compilar con VITE_GEMINI_API_KEY (secreto de GitHub Actions).
+// Nota de seguridad: al ser una app estática, la llave queda embebida en el bundle público.
+// Usa una llave de Gemini SIN facturación (solo capa gratuita) para que el riesgo máximo sea
+// agotar la cuota gratis, no un cobro.
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
+const GEMINI_MODEL = 'gemini-3-flash-preview';
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ message: "Error en el servidor" }));
-      throw new Error(errorData.message || "Error al procesar la imagen");
-    }
-
-    return await response.json();
-  } catch (error: any) {
-    console.error("Error analizando receta:", error);
-    throw error;
+const getGeminiClient = () => {
+  if (!GEMINI_API_KEY) {
+    throw new Error('Falta la llave de IA. Configura VITE_GEMINI_API_KEY en GitHub y vuelve a compilar.');
   }
+  return new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+};
+
+const analyzePrescription = async (base64Image: string) => {
+  const client = getGeminiClient();
+  const prompt = "Analiza esta receta médica y extrae una lista de medicamentos. Para cada medicamento, identifica el nombre comercial o genérico, la dosis (ej. 500mg), la frecuencia (ej. cada 8 horas), la duración del tratamiento (ej. 7 días, o 'indefinido') y cualquier comentario o nota adicional del médico (ej. 'tomar después de comer'). Devuelve los resultados estrictamente en formato JSON según el esquema proporcionado.";
+
+  const response = await client.models.generateContent({
+    model: GEMINI_MODEL,
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { text: prompt },
+          { inlineData: { mimeType: "image/jpeg", data: base64Image.split(',')[1] } },
+        ],
+      },
+    ],
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING },
+            dosage: { type: Type.STRING },
+            frequency: { type: Type.STRING },
+            duration: { type: Type.STRING },
+            comments: { type: Type.STRING },
+          },
+          required: ["name", "dosage", "frequency"],
+        },
+      },
+    },
+  });
+
+  const text = response.text;
+  if (!text) throw new Error("La IA no devolvió una respuesta legible. Intenta con una foto más clara.");
+  return JSON.parse(text);
 };
 
 const performSecurityAudit = async (newMeds: any[], historyMeds: any[]) => {
-  try {
-    const response = await fetch(`${API_URL}/api/security-audit`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ newMeds, historyMeds }),
-    });
+  const client = getGeminiClient();
+  const prompt = `Actúa como un experto en farmacología clínica y seguridad del paciente.
+Analiza la interacción entre los NUEVOS medicamentos de una receta y el HISTORIAL médico del paciente.
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ message: "Error en auditoría" }));
-      throw new Error(errorData.message || "Error al realizar auditoría");
-    }
+NUEVOS MEDICAMENTOS: ${JSON.stringify(newMeds)}
+HISTORIAL (lo que ya toma): ${JSON.stringify(historyMeds)}
 
-    return await response.json();
-  } catch (error: any) {
-    console.error("Error en auditoría de seguridad:", error);
-    throw error;
-  }
+TAREAS:
+1. Busca interacciones medicamentosas peligrosas entre los nuevos y los existentes.
+2. Advierte sobre dosis potencialmente altas o frecuencias inusuales.
+3. Proporciona consejos de seguridad (ej. "no tomar con alcohol", "tomar con alimentos").
+4. Asigna un "Puntaje de Seguridad" de 0 a 100.
+
+Devuelve un JSON estrictamente con este esquema:
+{
+  "safetyScore": number,
+  "warnings": string[],
+  "interactions": { "medA": string, "medB": string, "risk": "low"|"medium"|"high", "description": string }[],
+  "recommendations": string[]
+}`;
+
+  const response = await client.models.generateContent({
+    model: GEMINI_MODEL,
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    config: { responseMimeType: "application/json" },
+  });
+
+  return JSON.parse(response.text || "{}");
 };
 
 // --- Helpers ---
