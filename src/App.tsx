@@ -24,30 +24,25 @@ import {
   Info,
   ShieldAlert
 } from 'lucide-react';
-import { 
-  auth, 
-  db, 
-  googleProvider, 
-  signInWithPopup, 
-  signOut, 
-  onAuthStateChanged, 
-  handleFirestoreError 
-} from './firebase';
-import { 
-  collection, 
-  addDoc, 
-  onSnapshot, 
-  query, 
-  where, 
-  serverTimestamp, 
-  doc, 
+import {
+  auth,
+  db,
+  onAuthStateChanged,
+  handleFirestoreError,
+  collection,
+  addDoc,
+  onSnapshot,
+  query,
+  where,
+  serverTimestamp,
+  doc,
   setDoc,
-  updateDoc, 
+  updateDoc,
   deleteDoc,
   orderBy,
   getDocs,
   writeBatch
-} from 'firebase/firestore';
+} from './localdb';
 
 // --- Types ---
 type View = 'login' | 'dashboard' | 'camera' | 'calendar' | 'gallery' | 'preview';
@@ -292,7 +287,7 @@ const DashboardView = ({ setView, user, reminders, onTestAlarm, onOpenSettings, 
     >
       <header className="flex items-center justify-between mb-8">
         <div>
-          <p className="text-zinc-500 text-sm font-medium">Hola, {user?.displayName?.split(' ')[0] || 'Usuario'}</p>
+          <p className="text-zinc-500 text-sm font-medium">Hola</p>
           <h1 className="text-2xl font-bold text-zinc-900">Tu Salud Hoy</h1>
         </div>
         <div className="flex gap-2">
@@ -302,9 +297,6 @@ const DashboardView = ({ setView, user, reminders, onTestAlarm, onOpenSettings, 
             title="Ajustes de Horario"
           >
             <Bell className="w-5 h-5" />
-          </button>
-          <button onClick={() => signOut(auth)} className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center text-zinc-400 border border-zinc-100">
-            <LogOut className="w-5 h-5" />
           </button>
         </div>
       </header>
@@ -457,129 +449,122 @@ const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message }: {
   );
 };
 
-interface LoginProps {
-  onAcceptTerms: () => void;
-}
+const STARTED_KEY = 'fotofarma:started';
 
-const Login = ({ onAcceptTerms }: LoginProps) => {
+const hasStarted = () => {
+  try { return localStorage.getItem(STARTED_KEY) === '1'; } catch { return false; }
+};
+
+const markStarted = () => {
+  try { localStorage.setItem(STARTED_KEY, '1'); } catch {}
+};
+
+const PASOS = [
+  { n: '01', titulo: 'Fotografía la receta', texto: 'La que te dio tu médico, tal cual.' },
+  { n: '02', titulo: 'Revisa lo que leímos', texto: 'Medicamento, dosis y cada cuánto. Corrige lo que haga falta.' },
+  { n: '03', titulo: 'Sigue tu calendario', texto: 'Te avisamos a la hora de cada toma.' },
+];
+
+const Portada = ({ onStart }: { onStart: () => void; key?: string }) => {
   const [showTerms, setShowTerms] = useState(false);
-  const handleLogin = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-      onAcceptTerms();
-    } catch (error: any) {
-      if (error.code === 'auth/popup-closed-by-user') {
-        return;
-      }
-      console.error("Login error:", error);
-    }
-  };
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="relative flex flex-col items-center justify-center min-h-screen p-8 bg-zinc-900 overflow-hidden text-center"
+      className="min-h-screen bg-[#f3eee4] text-[#1f2a24]"
     >
-      <div className="absolute inset-0 z-0">
-        <div className="absolute top-0 -left-10 w-72 h-72 bg-emerald-600/20 rounded-full blur-[100px]" />
-        <div className="absolute bottom-0 -right-10 w-72 h-72 bg-indigo-600/20 rounded-full blur-[100px]" />
-      </div>
+      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-6 pt-8 pb-10">
+        <header className="flex items-baseline justify-between border-b border-[#1f2a24] pb-3">
+          <span className="font-serif text-xl font-semibold tracking-tight">FotoFarma</span>
+          <span className="text-[11px] uppercase tracking-[0.18em] text-[#5b6b61]">Recetario personal</span>
+        </header>
 
-      <div className="relative z-10 w-full max-w-sm space-y-12">
-        <motion.div
-           initial={{ y: 20, opacity: 0 }}
-           animate={{ y: 0, opacity: 1 }}
-           transition={{ delay: 0.2 }}
-        >
-          <div className="inline-flex items-center justify-center w-20 h-20 mb-6 bg-emerald-500 rounded-[28px] shadow-2xl shadow-emerald-500/20">
-            <Bell className="w-10 h-10 text-white" />
-          </div>
-          <h1 className="text-4xl font-black tracking-tight text-white mb-4">FotoFarma</h1>
-          <p className="text-zinc-400 text-lg">Analiza tus recetas médicas con IA y nunca olvides una dosis.</p>
-        </motion.div>
+        <main className="flex flex-1 flex-col justify-center py-10">
+          <p className="font-serif text-6xl leading-none text-[#2f5d46]" aria-hidden="true">℞</p>
+          <h1 className="mt-5 font-serif text-[2.6rem] leading-[1.05] font-medium tracking-tight">
+            Tus medicinas,<br />a su hora.
+          </h1>
+          <p className="mt-5 text-[15px] leading-relaxed text-[#46534b]">
+            Toma una foto de tu receta y arma tu calendario de tomas. Todo se guarda en este teléfono; no necesitas cuenta.
+          </p>
 
-        <div className="space-y-6">
-          <div className="space-y-4">
-            <button 
-              onClick={handleLogin}
-              className="w-full py-5 bg-white text-zinc-900 font-bold rounded-2xl flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95 shadow-xl"
-            >
-              <User className="w-5 h-5" />
-              Empezar ahora
-              <ArrowRight className="w-5 h-5 ml-2" />
+          <ol className="mt-10 border-t border-[#cfc6b4]">
+            {PASOS.map(p => (
+              <li key={p.n} className="flex gap-4 border-b border-[#cfc6b4] py-4">
+                <span className="font-serif text-sm text-[#2f5d46] pt-0.5">{p.n}</span>
+                <div>
+                  <p className="font-semibold text-[15px]">{p.titulo}</p>
+                  <p className="text-sm text-[#5b6b61]">{p.texto}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </main>
+
+        <footer className="space-y-4">
+          <button
+            onClick={onStart}
+            className="w-full rounded-md bg-[#2f5d46] py-4 text-[15px] font-semibold text-[#f3eee4] transition-colors hover:bg-[#264d3a] active:bg-[#1f4030]"
+          >
+            Empezar
+          </button>
+          <p className="text-center text-xs leading-relaxed text-[#5b6b61]">
+            FotoFarma no sustituye a tu médico ni a tu farmacéutico.{' '}
+            <button onClick={() => setShowTerms(true)} className="underline underline-offset-2 text-[#1f2a24]">
+              Aviso legal
             </button>
-            
-            <div className="text-center px-6">
-              <p className="text-zinc-500 text-[10px] leading-relaxed">
-                Al iniciar sesión, confirmas que has leído y aceptas nuestro{' '}
-                <button 
-                  onClick={() => setShowTerms(true)}
-                  className="text-white font-bold underline decoration-zinc-600 underline-offset-2"
-                >
-                  Aviso Legal y Uso de IA
-                </button>
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Full Terms Modal */}
-        <AnimatePresence>
-          {showTerms && (
-            <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-              <motion.div 
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl"
-              >
-                <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <ShieldAlert className="w-6 h-6 text-amber-500" />
-                    <h3 className="text-xl font-black text-white">Aviso Legal</h3>
-                  </div>
-                  <button onClick={() => setShowTerms(false)} className="text-zinc-500 hover:text-white">
-                    <X className="w-6 h-6" />
-                  </button>
-                </div>
-                
-                <div className="p-6 max-h-[50vh] overflow-y-auto space-y-4 text-sm text-zinc-400 leading-relaxed font-medium">
-                  <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl">
-                    <p className="text-amber-200 text-xs font-bold uppercase mb-2">Punto Crítico</p>
-                    <p>Esta aplicación es un <b>Asistente de Apoyo</b>. No es un dispositivo médico ni reemplaza la consulta con un profesional de la salud.</p>
-                  </div>
-
-                  <section className="space-y-2">
-                    <h4 className="text-zinc-200 font-bold">1. Uso de Inteligencia Artificial</h4>
-                    <p>Utilizamos modelos de IA para analizar imágenes de recetas. Aunque es avanzado, la IA puede malinterpretar la caligrafía o los nombres de medicamentos.</p>
-                  </section>
-
-                  <section className="space-y-2">
-                    <h4 className="text-zinc-200 font-bold">2. Validación Obligatoria</h4>
-                    <p>Es responsabilidad del usuario revisar que cada horario, dosis y medicamento coincida exactamente con lo indicado por su médico.</p>
-                  </section>
-
-                  <section className="space-y-2">
-                    <h4 className="text-zinc-200 font-bold">3. Auditoría de Seguridad</h4>
-                    <p>La IA de seguridad busca interacciones conocidas, pero no cubre el 100% de los casos posibles.</p>
-                  </section>
-                </div>
-
-                <div className="p-6 bg-zinc-800/30">
-                  <button 
-                    onClick={() => setShowTerms(false)}
-                    className="w-full py-4 bg-white text-zinc-900 font-bold rounded-2xl active:scale-95 transition-all"
-                  >
-                    Entendido y Acepto
-                  </button>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
+          </p>
+        </footer>
       </div>
+
+      <AnimatePresence>
+        {showTerms && (
+          <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center bg-black/40 p-4">
+            <motion.div
+              initial={{ y: 24, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 24, opacity: 0 }}
+              className="w-full max-w-md rounded-lg bg-[#fbf8f2] text-[#1f2a24] shadow-xl"
+            >
+              <div className="flex items-center justify-between border-b border-[#cfc6b4] px-5 py-4">
+                <h3 className="font-serif text-xl font-semibold">Aviso legal</h3>
+                <button onClick={() => setShowTerms(false)} className="text-[#5b6b61]" aria-label="Cerrar">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="max-h-[55vh] space-y-4 overflow-y-auto px-5 py-5 text-sm leading-relaxed text-[#46534b]">
+                <p>FotoFarma es una herramienta de apoyo. <b className="text-[#1f2a24]">No es un dispositivo médico</b> ni reemplaza la consulta con un profesional de la salud.</p>
+                <section>
+                  <h4 className="font-semibold text-[#1f2a24]">1. Lectura automática</h4>
+                  <p>La lectura de la foto la hace un modelo de inteligencia artificial y puede equivocarse con la letra o con el nombre de un medicamento.</p>
+                </section>
+                <section>
+                  <h4 className="font-semibold text-[#1f2a24]">2. Revisión obligatoria</h4>
+                  <p>Antes de guardar, comprueba que cada medicamento, dosis y horario coincida con lo que indicó tu médico.</p>
+                </section>
+                <section>
+                  <h4 className="font-semibold text-[#1f2a24]">3. Interacciones</h4>
+                  <p>La revisión de interacciones busca casos conocidos, pero no cubre todos los posibles.</p>
+                </section>
+                <section>
+                  <h4 className="font-semibold text-[#1f2a24]">4. Tus datos</h4>
+                  <p>Tus recetas y recordatorios se guardan solo en este navegador. Si borras los datos del navegador, se pierden.</p>
+                </section>
+              </div>
+              <div className="border-t border-[#cfc6b4] px-5 py-4">
+                <button
+                  onClick={() => setShowTerms(false)}
+                  className="w-full rounded-md bg-[#1f2a24] py-3 text-sm font-semibold text-[#f3eee4]"
+                >
+                  Entendido
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };
@@ -778,9 +763,6 @@ const CalendarView = ({ setView, requestPermission, notificationPermission, togg
           >
             <Trash2 className="w-6 h-6" />
           </button>
-          <button onClick={() => signOut(auth)} className="p-2 text-zinc-600">
-            <LogOut className="w-6 h-6" />
-          </button>
         </div>
       </header>
 
@@ -938,9 +920,6 @@ const GalleryView = ({ setView }: GalleryViewProps) => {
             title="Eliminar todas las recetas"
           >
             <Trash2 className="w-6 h-6" />
-          </button>
-          <button onClick={() => signOut(auth)} className="w-10 h-10 bg-zinc-100 rounded-full flex items-center justify-center text-zinc-600">
-            <LogOut className="w-6 h-6" />
           </button>
         </div>
       </div>
@@ -1431,7 +1410,7 @@ export default function App() {
   };
 
   const subscribeUserToPush = async (userId: string) => {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    if (!API_URL || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
 
     try {
       const registration = await navigator.serviceWorker.ready;
@@ -1573,11 +1552,7 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      if (u) {
-        setView('dashboard');
-      } else {
-        setView('login');
-      }
+      setView(hasStarted() ? 'dashboard' : 'login');
     });
     return () => unsubscribe();
   }, []);
@@ -1665,7 +1640,7 @@ export default function App() {
       </AnimatePresence>
 
       <AnimatePresence mode="wait">
-        {view === 'login' && <Login onAcceptTerms={() => {}} />}
+        {view === 'login' && <Portada key="login" onStart={() => { markStarted(); setView('dashboard'); }} />}
         {view === 'dashboard' && (
           <DashboardView 
             key="dashboard" 
