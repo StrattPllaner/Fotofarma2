@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 /* Tablero que llena la pantalla: horizontal (laptop, iPad acostado) y vertical (iPad parado) */
@@ -6,27 +6,55 @@
 @custom-variant tall (@media (min-width: 640px) and (orientation: portrait) and (min-height: 860px));
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Outfit", sans-serif;
-  --font-serif: "Fraunces", ui-serif, Georgia, serif;
+  --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", ui-sans-serif, system-ui, sans-serif;
+
+  /* Paleta FotoFarma (de los bocetos): azul suave, lila, menta y naranja sobre lienzo azulado */
+  --color-canvas: #f3f6fd;     /* fondo general */
+  --color-card: #ffffff;
+  --color-line: #e4eaf6;       /* bordes y divisores */
+  --color-ink: #1c2645;        /* texto principal (azul marino) */
+  --color-muted: #6c7894;      /* texto secundario */
+  --color-faint: #a3adc4;
+
+  --color-brand-soft: #e9effd;
+  --color-brand-tint: #b7cbf9;
+  --color-brand: #5b86f0;      /* azul principal */
+  --color-brand-strong: #3e66d6;
+
+  --color-lav-soft: #efebfe;
+  --color-lav: #8a79f0;        /* lila */
+  --color-lav-strong: #6c59dc;
+
+  --color-mint-soft: #e2f6ef;
+  --color-mint: #3fc49b;       /* menta */
+  --color-mint-strong: #23a07a;
+
+  --color-sun-soft: #fdf0de;
+  --color-sun: #f4a53d;        /* naranja */
+  --color-sun-strong: #d9861b;
+
+  --color-ok: #22c55e;         /* palomita de "tomado" */
+  --color-bad-soft: #fdecee;
+  --color-bad: #ec5b6c;
 }
 
 /* Alto de la barra inferior; el contenido deja este espacio libre */
 :root {
-  --nav-h: calc(72px + env(safe-area-inset-bottom));
+  --nav-h: calc(88px + env(safe-area-inset-bottom));
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 @media (min-width: 768px) {
-  :root { --nav-h: calc(80px + env(safe-area-inset-bottom)); }
+  :root { --nav-h: calc(92px + env(safe-area-inset-bottom)); }
 }
 
 /* Celular acostado: barra más baja para dejar sitio al contenido */
 @media (max-height: 500px) {
-  :root { --nav-h: calc(60px + env(safe-area-inset-bottom)); }
+  :root { --nav-h: calc(76px + env(safe-area-inset-bottom)); }
 }
 
-html, body { background: #fafafa; overscroll-behavior-y: none; }
+html, body { background: var(--color-canvas); color: var(--color-ink); overscroll-behavior-y: none; }
 
 /* Animación de toque: todos los botones se hunden un poco al presionarlos */
 button {
@@ -47,7 +75,7 @@ button:active:not(:disabled) {
 }
 
 button:focus-visible {
-  outline: 2px solid #059669;
+  outline: 2px solid var(--color-brand);
   outline-offset: 3px;
 }
 
@@ -62,7 +90,7 @@ button:focus-visible {
 @media (hover: hover) {
   .tile:hover {
     transform: translateY(-3px);
-    box-shadow: 0 14px 30px -12px rgb(24 24 27 / 0.18);
+    box-shadow: 0 18px 36px -18px rgb(62 102 214 / 0.35);
   }
 }
 
@@ -80,3 +108,15 @@ button:focus-visible {
     animation-duration: 0.01ms !important;
   }
 }
+
+/* Sombra suave azulada de las tarjetas */
+.shadow-soft { box-shadow: 0 1px 2px rgb(28 38 69 / 0.04), 0 8px 24px -12px rgb(62 102 214 / 0.18); }
+
+/* Palomita: rebote al marcar */
+@keyframes pop { 0% { transform: scale(0.6); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
+.pop { animation: pop 320ms var(--ease-out); }
+
+/* Destellos de la cámara del inicio */
+@keyframes flash { 0%, 100% { opacity: 0.9; transform: translateX(0); } 50% { opacity: 0.45; transform: translateX(var(--dx)); } }
+.flash-l { --dx: -4px; animation: flash 2.4s ease-in-out infinite; transform-box: fill-box; }
+.flash-r { --dx: 4px; animation: flash 2.4s ease-in-out infinite; transform-box: fill-box; }

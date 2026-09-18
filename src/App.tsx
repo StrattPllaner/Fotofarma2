@@ -23,7 +23,13 @@ import {
   AlertTriangle,
   Info,
   ShieldAlert,
-  Home
+  Home,
+  Pill,
+  Sparkle,
+  Clock3,
+  Settings2,
+  ArrowLeft,
+  History
 } from 'lucide-react';
 import {
   auth,
@@ -65,6 +71,7 @@ interface Medication {
 
 interface UserSettings {
   uid: string;
+  name?: string;
   dayStartTime: string;
   acceptedTerms: boolean;
 }
@@ -230,6 +237,7 @@ interface DashboardProps {
   installPrompt: any;
   onInstall: () => void;
   onToggle: (med: Medication) => void;
+  userName?: string;
   key?: string;
 }
 
@@ -239,7 +247,7 @@ const AlarmOverlay = ({ med, onConfirm, onStop }: { med: Medication, onConfirm: 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] bg-emerald-600 flex flex-col items-center justify-center p-8 text-white text-center"
+      className="fixed inset-0 z-[100] bg-brand flex flex-col items-center justify-center p-8 text-white text-center"
     >
       <motion.div 
         animate={{ 
@@ -247,26 +255,26 @@ const AlarmOverlay = ({ med, onConfirm, onStop }: { med: Medication, onConfirm: 
           rotate: [0, -5, 5, -5, 0]
         }}
         transition={{ repeat: Infinity, duration: 0.5 }}
-        className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center mb-8"
+        className="w-24 h-24 bg-card/20 rounded-full flex items-center justify-center mb-8"
       >
         <Bell className="w-12 h-12 text-white" />
       </motion.div>
       
-      <h2 className="text-sm font-bold uppercase tracking-widest text-emerald-100 mb-2">¡Es Hora del Medicamento!</h2>
+      <h2 className="text-sm font-bold uppercase tracking-widest text-brand-soft mb-2">¡Es Hora del Medicamento!</h2>
       <h1 className="text-4xl font-black mb-4">{med.name}</h1>
-      <p className="text-xl text-emerald-50 mb-12">{med.dosage}</p>
+      <p className="text-xl text-brand-soft mb-12">{med.dosage}</p>
       
       <div className="w-full space-y-4">
         <button 
           onClick={onConfirm}
-          className="w-full py-5 bg-white text-emerald-600 rounded-3xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 transition-transform"
+          className="w-full py-5 bg-card text-brand rounded-3xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 transition-transform"
         >
           <Check className="w-6 h-6" />
           REGISTRAR TOMA
         </button>
         <button 
           onClick={onStop}
-          className="w-full py-4 bg-emerald-700/50 text-white rounded-3xl font-bold flex items-center justify-center gap-2 transition-transform"
+          className="w-full py-4 bg-brand-strong/50 text-white rounded-3xl font-bold flex items-center justify-center gap-2 transition-transform"
         >
            SALTAR / LUEGO
         </button>
@@ -275,12 +283,150 @@ const AlarmOverlay = ({ med, onConfirm, onStop }: { med: Medication, onConfirm: 
   );
 };
 
-const DashboardView = ({ setView, reminders, onTestAlarm, onOpenSettings, installPrompt, onInstall, onToggle }: DashboardProps) => {
-  const completedToday = reminders.filter(r => r.completed).length;
-  const totalToday = reminders.length;
-  const progress = totalToday > 0 ? Math.round((completedToday / totalToday) * 100) : 0;
+// --- Estilo por medicamento (colores de los bocetos) ---
+const MED_TONES = [
+  { edge: 'bg-brand', tile: 'bg-brand-soft text-brand', pill: 'bg-brand-soft text-brand-strong' },
+  { edge: 'bg-lav', tile: 'bg-lav-soft text-lav', pill: 'bg-lav-soft text-lav-strong' },
+  { edge: 'bg-mint', tile: 'bg-mint-soft text-mint', pill: 'bg-mint-soft text-mint-strong' },
+  { edge: 'bg-sun', tile: 'bg-sun-soft text-sun', pill: 'bg-sun-soft text-sun-strong' },
+];
+
+const toneFor = (name: string) => {
+  let h = 0;
+  for (const ch of name.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return MED_TONES[h % MED_TONES.length];
+};
+
+// "14:30" -> "02:30 PM"
+const formatHora = (t?: string) => {
+  if (!t || !/^\d{1,2}:\d{2}$/.test(t)) return t || '';
+  const [h, m] = t.split(':').map(Number);
+  return `${String(h % 12 || 12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+};
+
+const haceCuanto = (ts?: number) => {
+  if (!ts) return '';
+  const min = Math.round((Date.now() - ts) / 60000);
+  if (min < 1) return 'hace un momento';
+  if (min < 60) return `hace ${min} min`;
+  const h = Math.round(min / 60);
+  return h === 1 ? 'hace 1 hora' : `hace ${h} horas`;
+};
+
+const CheckCircle = ({ done, className = '' }: { done: boolean; className?: string }) => (
+  <span
+    key={done ? 'si' : 'no'}
+    className={`flex shrink-0 items-center justify-center rounded-full transition-colors duration-200 ${done ? 'pop bg-ok text-white shadow-[0_6px_14px_-6px_rgb(34_197_94/0.8)]' : 'border-2 border-line text-faint'} ${className}`}
+  >
+    <Check className="h-[55%] w-[55%]" strokeWidth={done ? 3 : 2} />
+  </span>
+);
+
+const MedCard = ({ med, onToggle, onOpen }: { med: Medication & { completedAt?: number }; onToggle: () => void; onOpen: () => void; key?: string }) => {
+  const tone = toneFor(med.name);
+  return (
+    <motion.li
+      layout
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, ease: [0.2, 0.8, 0.2, 1] }}
+      className="tile relative flex items-center gap-[clamp(12px,2vmin,18px)] overflow-hidden rounded-[22px] bg-card py-[clamp(12px,2vmin,18px)] pr-2 pl-[clamp(16px,2.4vmin,22px)] shadow-soft"
+    >
+      <span className={`absolute inset-y-0 left-0 w-1.5 ${tone.edge}`} />
+      <span className={`flex h-[clamp(48px,6.5vmin,60px)] w-[clamp(48px,6.5vmin,60px)] shrink-0 items-center justify-center rounded-2xl ${tone.tile}`}>
+        <Pill className="h-1/2 w-1/2 " />
+      </span>
+      <button onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-3 text-left" aria-label={med.completed ? `Desmarcar ${med.name}` : `Marcar ${med.name} como tomado`}>
+        <span className="min-w-0 flex-1">
+          <span className={`block truncate text-[clamp(1rem,2.1vmin,1.15rem)] font-semibold ${med.completed ? 'text-muted' : 'text-ink'}`}>{med.name}</span>
+          <span className="block truncate text-sm text-muted">{med.dosage}</span>
+        </span>
+        <span className="flex shrink-0 flex-col items-end gap-1.5">
+          <span className={`rounded-full px-3 py-1 text-sm font-semibold tabular-nums ${tone.pill}`}>{formatHora(med.time)}</span>
+          <span className="flex items-center gap-1.5 text-sm">
+            <CheckCircle done={med.completed} className="h-5 w-5" />
+            <span className={med.completed ? 'font-semibold text-brand' : 'text-muted'}>{med.completed ? 'Tomado' : 'Próxima toma'}</span>
+          </span>
+          {med.completed && med.completedAt && <span className="-mt-1 text-xs text-faint">{haceCuanto(med.completedAt)}</span>}
+        </span>
+      </button>
+      <button onClick={onOpen} aria-label="Ver en el calendario" className="flex h-10 w-8 shrink-0 items-center justify-center rounded-full text-faint hover:text-ink">
+        <ChevronRight className="h-5 w-5" />
+      </button>
+    </motion.li>
+  );
+};
+
+const HeroCamara = ({ onClick, className = '' }: { onClick: () => void; className?: string }) => (
+  <button
+    onClick={onClick}
+    aria-label="Escanear receta"
+    className={`tile group relative isolate overflow-hidden rounded-[clamp(26px,4vmin,40px)] bg-gradient-to-br from-[#b3c8fb] via-[#94b3f8] to-[#7a9ff3] text-left shadow-[0_20px_40px_-24px_rgb(62_102_214/0.7)] ${className}`}
+  >
+    <span className="absolute -top-1/3 -left-1/4 -z-10 h-[90%] w-[70%] rounded-full bg-card/15" />
+    <span className="absolute -right-[12%] -bottom-[45%] -z-10 h-[110%] w-[55%] rotate-[-30deg] rounded-[38%] bg-[#6d93f1]/70 transition-transform duration-500 group-hover:rotate-[-24deg]" />
+    <span className="flex h-full min-h-[inherit] flex-col items-center justify-center gap-[clamp(10px,2vmin,20px)] p-6">
+      <svg viewBox="0 0 220 120" className="w-[clamp(150px,32vmin,300px)] drop-shadow-[0_10px_20px_rgb(40_70_170/0.25)]" aria-hidden="true">
+        <g className="flash-l" stroke="white" strokeWidth="9" strokeLinecap="round" opacity="0.9">
+          <line x1="22" y1="44" x2="38" y2="53" />
+          <line x1="18" y1="72" x2="38" y2="72" />
+        </g>
+        <g className="flash-r" stroke="white" strokeWidth="9" strokeLinecap="round" opacity="0.9">
+          <line x1="198" y1="44" x2="182" y2="53" />
+          <line x1="202" y1="72" x2="182" y2="72" />
+        </g>
+        <path d="M84 22c2-6 7-10 14-10h24c7 0 12 4 14 10l3 7h19c9 0 16 7 16 16v50c0 9-7 16-16 16H62c-9 0-16-7-16-16V45c0-9 7-16 16-16h19z" fill="white" />
+        <circle cx="110" cy="71" r="26" fill="#94b3f8" />
+        <circle cx="110" cy="71" r="15" fill="white" />
+      </svg>
+      <span className="rounded-full bg-card/25 px-4 py-1.5 text-[clamp(0.9rem,1.8vmin,1.05rem)] font-semibold text-white backdrop-blur-sm">
+        Escanear receta
+      </span>
+    </span>
+  </button>
+);
+
+const DashboardView = ({ setView, reminders, onTestAlarm, onOpenSettings, installPrompt, onInstall, onToggle, userName }: DashboardProps) => {
+  const total = reminders.length;
+  const hechas = reminders.filter(r => r.completed).length;
   const pendientes = reminders.filter(r => !r.completed);
-  const ordenadas = [...pendientes, ...reminders.filter(r => r.completed)];
+  const siguiente = pendientes[0];
+  const todoListo = pendientes.length === 0;
+
+  const Aviso = (
+    <button
+      onClick={() => setView('calendar')}
+      className={`tile relative flex w-full shrink-0 items-center gap-4 overflow-hidden rounded-[24px] p-[clamp(16px,2.6vmin,24px)] text-left ${todoListo ? 'bg-gradient-to-r from-mint-soft to-[#eef9f5]' : 'bg-gradient-to-r from-brand-soft to-[#f1f5fe]'}`}
+    >
+      <span className={`absolute -right-6 -bottom-10 h-28 w-28 rounded-full ${todoListo ? 'bg-mint/10' : 'bg-brand/10'}`} />
+      {todoListo ? (
+        <Sparkle className="h-7 w-7 shrink-0 fill-mint text-mint" />
+      ) : (
+        <Clock3 className="h-7 w-7 shrink-0 text-brand" />
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="block text-[clamp(1rem,2.1vmin,1.15rem)] font-semibold text-ink">
+          {todoListo ? 'Todo listo por hoy' : `Te ${pendientes.length === 1 ? 'falta 1 toma' : `faltan ${pendientes.length} tomas`}`}
+        </span>
+        <span className="block truncate text-sm text-muted">
+          {todoListo
+            ? (total === 1 ? 'Tomaste tu medicina de hoy' : total ? `Tomaste tus ${total} medicinas de hoy` : 'No tienes nada pendiente')
+            : `Siguiente: ${siguiente.name} a las ${formatHora(siguiente.time)}`}
+        </span>
+        {total > 0 && !todoListo && (
+          <span className="mt-2 block h-1.5 w-full max-w-60 overflow-hidden rounded-full bg-card">
+            <motion.span
+              className="block h-full rounded-full bg-brand"
+              initial={{ width: 0 }}
+              animate={{ width: `${Math.round((hechas / total) * 100)}%` }}
+              transition={{ duration: 0.6, ease: [0.2, 0.8, 0.2, 1] }}
+            />
+          </span>
+        )}
+      </span>
+      <ChevronRight className="h-5 w-5 shrink-0 text-faint" />
+    </button>
+  );
 
   return (
     <motion.div
@@ -288,156 +434,81 @@ const DashboardView = ({ setView, reminders, onTestAlarm, onOpenSettings, instal
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
       transition={{ duration: 0.25, ease: [0.2, 0.8, 0.2, 1] }}
-      className="flex h-dvh flex-col overflow-y-auto bg-zinc-50 px-[clamp(16px,4vw,56px)] pt-[clamp(16px,3.5vh,44px)] pb-[calc(var(--nav-h)+clamp(16px,2.5vh,28px))] wide:overflow-hidden tall:overflow-hidden"
+      className="flex h-dvh flex-col overflow-y-auto bg-canvas px-[clamp(16px,4vw,56px)] pt-[max(clamp(16px,3.5vh,44px),env(safe-area-inset-top))] pb-[calc(var(--nav-h)+16px)] wide:overflow-hidden"
     >
-      <header className="mb-[clamp(16px,3vh,32px)] flex shrink-0 items-center justify-between gap-4">
-        <div>
-          <p className="text-[clamp(0.85rem,1.6vmin,1.05rem)] font-medium text-zinc-500">
-            {new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })}
-          </p>
-          <h1 className="text-[clamp(1.6rem,4vmin,2.75rem)] font-bold leading-tight text-zinc-900">Tu salud hoy</h1>
-        </div>
-        <div className="flex items-center gap-2">
+      <header className="mb-[clamp(16px,3vh,32px)] flex shrink-0 items-center justify-between gap-3">
+        <h1 className="min-w-0 truncate text-[clamp(1.5rem,3.8vmin,2.6rem)] text-ink">
+          Hola, <b className="font-bold">{userName || 'bienvenido'}</b>
+        </h1>
+        <div className="flex shrink-0 items-center gap-2">
           {installPrompt && (
-            <button
-              onClick={onInstall}
-              className="hidden items-center gap-2 rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white sm:flex"
-            >
-              <Download className="h-4 w-4" /> Instalar app
+            <button onClick={onInstall} className="hidden items-center gap-2 rounded-full bg-ink px-4 py-2.5 text-sm font-semibold text-white sm:flex">
+              <Download className="h-4 w-4" /> Instalar
             </button>
           )}
           <button
-            onClick={onOpenSettings}
-            className="flex h-[clamp(40px,5.5vmin,56px)] w-[clamp(40px,5.5vmin,56px)] items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 shadow-sm hover:text-zinc-900"
-            title="Ajustes de horario"
+            onClick={() => setView('calendar')}
+            className="flex items-center gap-2 rounded-full bg-brand-soft px-3.5 py-2.5 sm:px-4 text-[clamp(0.85rem,1.7vmin,1rem)] font-medium text-ink hover:bg-[#dde6fc]"
           >
-            <Bell className="h-[45%] w-[45%]" />
+            <CalendarIcon className="h-[1.15em] w-[1.15em] text-brand" />
+            <span className="sm:hidden">{new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}</span>
+            <span className="hidden sm:inline">{new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+          </button>
+          <button onClick={onOpenSettings} aria-label="Ajustes" className="flex h-11 w-11 items-center justify-center rounded-full bg-card text-muted shadow-soft hover:text-ink">
+            <Settings2 className="h-5 w-5" />
           </button>
         </div>
       </header>
 
       {installPrompt && (
-        <button
-          onClick={onInstall}
-          className="mb-4 flex shrink-0 items-center justify-between rounded-2xl bg-zinc-900 px-4 py-3 text-left text-white sm:hidden"
-        >
-          <span className="flex items-center gap-3">
-            <Download className="h-5 w-5" />
-            <span className="text-sm font-semibold">Instala FotoFarma para recibir alarmas</span>
-          </span>
+        <button onClick={onInstall} className="mb-4 flex shrink-0 items-center justify-between rounded-2xl bg-ink px-4 py-3 text-left text-white sm:hidden">
+          <span className="flex items-center gap-3 text-sm font-semibold"><Download className="h-5 w-5" /> Instala FotoFarma para recibir alarmas</span>
           <ChevronRight className="h-5 w-5 opacity-70" />
         </button>
       )}
 
-      <div className="grid flex-1 grid-cols-2 gap-[clamp(12px,2.2vmin,28px)] wide:min-h-0 wide:grid-cols-10 wide:grid-rows-6 tall:min-h-0 tall:grid-cols-2 tall:grid-rows-6">
-        {/* Cumplimiento */}
-        <section className="relative col-span-2 flex flex-col justify-between overflow-hidden rounded-[clamp(24px,3.5vmin,40px)] bg-emerald-600 p-[clamp(20px,3.2vmin,40px)] text-white shadow-lg shadow-emerald-600/15 wide:col-span-4 wide:col-start-1 wide:row-span-3 wide:row-start-1 tall:col-span-1 tall:col-start-1 tall:row-span-2 tall:row-start-1">
-          <div>
-            <p className="text-[clamp(0.9rem,1.7vmin,1.15rem)] font-medium text-emerald-100">Cumplimiento diario</p>
-            <p className="mt-1 text-[clamp(2.75rem,9vmin,6rem)] font-bold leading-none tracking-tight">{progress}%</p>
-          </div>
-          <div className="mt-5">
-            <div className="h-2.5 w-full overflow-hidden rounded-full bg-emerald-800/40">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${progress}%` }}
-                transition={{ duration: 0.6, ease: [0.2, 0.8, 0.2, 1] }}
-                className="h-full rounded-full bg-white"
-              />
+      <div className="flex flex-col gap-[clamp(16px,3vh,28px)] wide:grid wide:min-h-0 wide:flex-1 wide:grid-cols-12 wide:gap-[clamp(20px,3vmin,40px)]">
+        {/* Columna izquierda: cámara + aviso */}
+        <div className="flex flex-col gap-[clamp(16px,3vh,28px)] wide:col-span-5 wide:min-h-0">
+          <HeroCamara onClick={() => setView('camera')} className="min-h-[clamp(190px,27vh,300px)] wide:min-h-0 wide:flex-1 tall:min-h-[30vh]" />
+          <div className="hidden wide:block">{Aviso}</div>
+        </div>
+
+        {/* Columna derecha: medicamentos */}
+        <section className="flex flex-col wide:col-span-7 wide:min-h-0">
+          <div className="mb-4 flex shrink-0 items-end justify-between gap-3">
+            <div className="flex items-stretch gap-3">
+              <span className="w-1.5 rounded-full bg-gradient-to-b from-mint to-[#7fd9bd]" />
+              <div>
+                <h2 className="text-[clamp(1.4rem,3.2vmin,2.2rem)] font-semibold leading-tight text-ink">Tus medicamentos</h2>
+                <p className="text-[clamp(0.9rem,1.8vmin,1.05rem)] text-muted">
+                  {total === 0 ? 'Sin tomas para hoy' : `${total} ${total === 1 ? 'toma programada' : 'tomas programadas'}`}
+                </p>
+              </div>
             </div>
-            <p className="mt-3 text-[clamp(0.9rem,1.7vmin,1.1rem)] text-emerald-50">
-              {totalToday === 0 ? 'No tienes tomas para hoy.' :
-               progress === 100 ? '¡Excelente! Has tomado todo.' :
-               `Te faltan ${totalToday - completedToday} de ${totalToday} tomas.`}
-            </p>
+            <button onClick={onTestAlarm} className="rounded-full bg-card px-3 py-2 text-xs font-semibold text-muted shadow-soft hover:text-ink">
+              Probar alarma
+            </button>
           </div>
-        </section>
 
-        {/* Analizar receta */}
-        <button
-          onClick={() => setView('camera')}
-          className="tile group col-span-2 flex min-h-[clamp(150px,24vh,260px)] flex-col justify-between rounded-[clamp(24px,3.5vmin,40px)] border border-zinc-200/80 bg-white p-[clamp(20px,3.2vmin,40px)] text-left shadow-sm wide:col-span-6 wide:col-start-5 wide:row-span-4 wide:row-start-1 wide:min-h-0 tall:col-span-1 tall:col-start-2 tall:row-span-2 tall:row-start-1 tall:min-h-0"
-        >
-          <span className="flex h-[clamp(48px,8vmin,88px)] w-[clamp(48px,8vmin,88px)] items-center justify-center rounded-[28%] bg-emerald-50 text-emerald-600 transition-colors duration-200 group-hover:bg-emerald-600 group-hover:text-white">
-            <Camera className="h-1/2 w-1/2" />
-          </span>
-          <span className="hidden flex-wrap gap-2 wide:flex">
-            {['Toma la foto', 'Revisa dosis y horas', 'Guarda tu calendario'].map((t, n) => (
-              <span key={t} className="flex items-center gap-2 rounded-full border border-zinc-200 px-3 py-1.5 text-[clamp(0.8rem,1.5vmin,0.95rem)] text-zinc-500">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-zinc-100 text-[11px] font-bold text-zinc-600">{n + 1}</span>
-                {t}
-              </span>
-            ))}
-          </span>
-          <span className="flex items-end justify-between gap-4">
-            <span>
-              <span className="block text-[clamp(1.25rem,3.4vmin,2.4rem)] font-bold leading-tight text-zinc-900">Analizar receta</span>
-              <span className="mt-1 block text-[clamp(0.9rem,1.8vmin,1.15rem)] text-zinc-500">Toma una foto y arma tus horarios.</span>
-            </span>
-            <ArrowRight className="hidden h-[clamp(24px,3.5vmin,36px)] w-[clamp(24px,3.5vmin,36px)] shrink-0 text-zinc-300 transition-all duration-200 group-hover:translate-x-1 group-hover:text-emerald-600 sm:block" />
-          </span>
-        </button>
-
-        {/* Calendario */}
-        <button
-          onClick={() => setView('calendar')}
-          className="tile group col-span-1 flex aspect-[1/0.85] flex-col justify-between rounded-[clamp(24px,3.5vmin,40px)] border border-zinc-200/80 bg-white p-[clamp(16px,2.8vmin,36px)] text-left shadow-sm wide:col-span-3 wide:col-start-5 wide:row-span-2 wide:row-start-5 wide:aspect-auto tall:col-start-1 tall:row-span-2 tall:row-start-3 tall:aspect-auto"
-        >
-          <span className="flex h-[clamp(44px,6.5vmin,72px)] w-[clamp(44px,6.5vmin,72px)] items-center justify-center rounded-[28%] bg-indigo-50 text-indigo-600 transition-colors duration-200 group-hover:bg-indigo-600 group-hover:text-white">
-            <CalendarIcon className="h-1/2 w-1/2" />
-          </span>
-          <span className="text-[clamp(1rem,2.4vmin,1.6rem)] font-bold text-zinc-900">Calendario</span>
-        </button>
-
-        {/* Galería */}
-        <button
-          onClick={() => setView('gallery')}
-          className="tile group col-span-1 flex aspect-[1/0.85] flex-col justify-between rounded-[clamp(24px,3.5vmin,40px)] border border-zinc-200/80 bg-white p-[clamp(16px,2.8vmin,36px)] text-left shadow-sm wide:col-span-3 wide:col-start-8 wide:row-span-2 wide:row-start-5 wide:aspect-auto tall:col-start-2 tall:row-span-2 tall:row-start-3 tall:aspect-auto"
-        >
-          <span className="flex h-[clamp(44px,6.5vmin,72px)] w-[clamp(44px,6.5vmin,72px)] items-center justify-center rounded-[28%] bg-amber-50 text-amber-600 transition-colors duration-200 group-hover:bg-amber-500 group-hover:text-white">
-            <ImageIcon className="h-1/2 w-1/2" />
-          </span>
-          <span className="text-[clamp(1rem,2.4vmin,1.6rem)] font-bold text-zinc-900">Mis recetas</span>
-        </button>
-
-        {/* Tomas de hoy */}
-        <section className="col-span-2 flex min-h-0 flex-col rounded-[clamp(24px,3.5vmin,40px)] border border-zinc-200/80 bg-white p-[clamp(16px,2.6vmin,32px)] shadow-sm wide:col-span-4 wide:col-start-1 wide:row-span-3 wide:row-start-4 tall:col-span-2 tall:col-start-1 tall:row-span-2 tall:row-start-5">
-          <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
-            <h2 className="text-[clamp(1rem,2.2vmin,1.4rem)] font-bold text-zinc-900">Tomas de hoy</h2>
-            <div className="flex items-center gap-1">
-              <button onClick={onTestAlarm} className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-semibold text-zinc-600 hover:bg-zinc-200">
-                Probar alarma
-              </button>
-              <button onClick={() => setView('calendar')} className="rounded-full px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50">
-                Ver todo
-              </button>
-            </div>
-          </div>
-          {ordenadas.length === 0 ? (
-            <div className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-zinc-200 p-6 text-center text-sm text-zinc-400">
-              Todo al día por ahora
+          {total === 0 ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-[24px] border-2 border-dashed border-line p-8 text-center">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-soft text-brand"><Pill className="h-7 w-7 " /></span>
+              <p className="font-semibold text-ink">Aún no hay medicinas para hoy</p>
+              <p className="max-w-xs text-sm text-muted">Escanea tu receta o agrégalas a mano desde el calendario.</p>
+              <button onClick={() => setView('calendar')} className="mt-1 rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-strong">Agregar a mano</button>
             </div>
           ) : (
-            <ul className="-mx-1 flex-1 space-y-1 overflow-y-auto px-1 wide:min-h-0 tall:min-h-0">
-              {ordenadas.map(med => (
-                <li key={med.id}>
-                  <button
-                    onClick={() => onToggle(med)}
-                    className="flex w-full items-center gap-3 rounded-2xl p-2 text-left hover:bg-zinc-50"
-                  >
-                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 transition-colors duration-200 ${med.completed ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-zinc-200 text-transparent'}`}>
-                      <Check className="h-5 w-5" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className={`block truncate font-semibold text-zinc-900 ${med.completed ? 'text-zinc-400 line-through' : ''}`}>{med.name}</span>
-                      <span className="block truncate text-xs text-zinc-500">{med.dosage}</span>
-                    </span>
-                    <span className="shrink-0 text-sm font-semibold tabular-nums text-zinc-500">{med.time}</span>
-                  </button>
-                </li>
-              ))}
+            <ul className="-mx-2 grid content-start gap-3 px-2 pb-2 wide:min-h-0 wide:flex-1 wide:overflow-y-auto tall:grid-cols-2 xl:wide:grid-cols-2">
+              <AnimatePresence initial={false}>
+                {[...pendientes, ...reminders.filter(r => r.completed)].map(med => (
+                  <MedCard key={med.id} med={med} onToggle={() => onToggle(med)} onOpen={() => setView('calendar')} />
+                ))}
+              </AnimatePresence>
             </ul>
           )}
+
+          <div className="mt-[clamp(16px,3vh,24px)] wide:hidden">{Aviso}</div>
         </section>
       </div>
     </motion.div>
@@ -457,20 +528,20 @@ const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message }: {
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-[32px] p-8 max-w-sm w-full shadow-2xl"
+        className="bg-card rounded-[32px] p-8 max-w-sm w-full shadow-2xl"
       >
-        <h3 className="text-xl font-bold text-zinc-900 mb-2">{title}</h3>
-        <p className="text-zinc-500 mb-8 leading-relaxed">{message}</p>
+        <h3 className="text-xl font-bold text-ink mb-2">{title}</h3>
+        <p className="text-muted mb-8 leading-relaxed">{message}</p>
         <div className="flex gap-3">
           <button 
             onClick={onClose}
-            className="flex-1 py-4 bg-zinc-100 text-zinc-900 font-semibold rounded-2xl hover:bg-zinc-200 transition-colors"
+            className="flex-1 py-4 bg-canvas text-ink font-semibold rounded-2xl hover:bg-line transition-colors"
           >
             Cancelar
           </button>
           <button 
             onClick={() => { onConfirm(); onClose(); }}
-            className="flex-1 py-4 bg-rose-600 text-white font-semibold rounded-2xl shadow-lg shadow-rose-100 hover:bg-rose-700 transition-colors"
+            className="flex-1 py-4 bg-bad text-white font-semibold rounded-2xl shadow-lg shadow-bad-soft hover:bg-bad transition-colors"
           >
             Eliminar
           </button>
@@ -491,10 +562,49 @@ const markStarted = () => {
 };
 
 const PASOS = [
-  { n: '01', titulo: 'Fotografía la receta', texto: 'La que te dio tu médico, tal cual.' },
-  { n: '02', titulo: 'Revisa lo que leímos', texto: 'Medicamento, dosis y cada cuánto. Corrige lo que haga falta.' },
-  { n: '03', titulo: 'Sigue tu calendario', texto: 'Te avisamos a la hora de cada toma.' },
+  { Icon: Camera, tono: 'bg-brand-soft text-brand', titulo: 'Fotografía la receta', texto: 'La que te dio tu médico, tal cual.' },
+  { Icon: Pill, tono: 'bg-lav-soft text-lav', titulo: 'Revisa lo que leímos', texto: 'Medicamento, dosis y cada cuánto.' },
+  { Icon: Bell, tono: 'bg-mint-soft text-mint', titulo: 'Recibe tus avisos', texto: 'Te recordamos cada toma a su hora.' },
 ];
+
+// Vista previa decorativa de la app para la portada en pantallas grandes
+const PortadaMuestra = () => (
+  <div className="relative mx-auto w-full max-w-md" aria-hidden="true">
+    <motion.div
+      initial={{ opacity: 0, y: 24 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.6, delay: 0.15, ease: [0.2, 0.8, 0.2, 1] }}
+      className="rounded-[36px] bg-gradient-to-br from-[#b3c8fb] via-[#94b3f8] to-[#7a9ff3] p-10 shadow-[0_30px_60px_-30px_rgb(62_102_214/0.8)]"
+    >
+      <svg viewBox="0 0 220 120" className="mx-auto w-3/4">
+        <g className="flash-l" stroke="white" strokeWidth="9" strokeLinecap="round" opacity="0.9"><line x1="22" y1="44" x2="38" y2="53" /><line x1="18" y1="72" x2="38" y2="72" /></g>
+        <g className="flash-r" stroke="white" strokeWidth="9" strokeLinecap="round" opacity="0.9"><line x1="198" y1="44" x2="182" y2="53" /><line x1="202" y1="72" x2="182" y2="72" /></g>
+        <path d="M84 22c2-6 7-10 14-10h24c7 0 12 4 14 10l3 7h19c9 0 16 7 16 16v50c0 9-7 16-16 16H62c-9 0-16-7-16-16V45c0-9 7-16 16-16h19z" fill="white" />
+        <circle cx="110" cy="71" r="26" fill="#94b3f8" /><circle cx="110" cy="71" r="15" fill="white" />
+      </svg>
+    </motion.div>
+    {[
+      { n: 'Ibuprofeno', d: '400 mg · 1 tableta', h: '08:00 AM', t: MED_TONES[0], ok: true, pos: '-left-10 top-[62%] rotate-[-4deg]' },
+      { n: 'Amoxicilina', d: '500 mg · 1 cápsula', h: '12:30 PM', t: MED_TONES[1], ok: false, pos: '-right-8 top-[88%] rotate-[3deg]' },
+    ].map((c, i) => (
+      <motion.div
+        key={c.n}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.35 + i * 0.12, ease: [0.2, 0.8, 0.2, 1] }}
+        className={`absolute flex w-72 items-center gap-3 overflow-hidden rounded-[20px] bg-card py-3 pr-4 pl-5 shadow-[0_18px_40px_-18px_rgb(28_38_69/0.35)] ${c.pos}`}
+      >
+        <span className={`absolute inset-y-0 left-0 w-1.5 ${c.t.edge}`} />
+        <span className={`flex h-11 w-11 items-center justify-center rounded-xl ${c.t.tile}`}><Pill className="h-5 w-5 " /></span>
+        <span className="min-w-0 flex-1"><span className="block font-semibold text-ink">{c.n}</span><span className="block text-xs text-muted">{c.d}</span></span>
+        <span className="flex flex-col items-end gap-1">
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${c.t.pill}`}>{c.h}</span>
+          <CheckCircle done={c.ok} className="h-5 w-5" />
+        </span>
+      </motion.div>
+    ))}
+  </div>
+);
 
 const Portada = ({ onStart }: { onStart: () => void; key?: string }) => {
   const [showTerms, setShowTerms] = useState(false);
@@ -504,100 +614,115 @@ const Portada = ({ onStart }: { onStart: () => void; key?: string }) => {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="min-h-screen bg-[#f3eee4] text-[#1f2a24]"
+      className="relative min-h-dvh overflow-hidden bg-canvas text-ink"
     >
-      <div className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-6 pt-8 pb-8 sm:px-10 lg:px-16">
-        <header className="flex items-baseline justify-between gap-4 border-b border-[#1f2a24] pb-3">
-          <span className="font-serif text-xl font-semibold tracking-tight md:text-2xl">FotoFarma</span>
-          <span className="text-[11px] uppercase tracking-[0.18em] text-[#5b6b61]">Recetario personal</span>
+      <span className="pointer-events-none absolute -top-40 -right-40 h-[520px] w-[520px] rounded-full bg-brand-soft blur-2xl" />
+      <span className="pointer-events-none absolute -bottom-48 -left-40 h-[420px] w-[420px] rounded-full bg-mint-soft/70 blur-2xl" />
+
+      <div className="relative mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-6 pt-[max(24px,env(safe-area-inset-top))] pb-8 sm:px-10 lg:px-16">
+        <header className="flex items-center gap-3 py-2">
+          <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" className="h-10 w-10 rounded-xl" />
+          <span className="text-xl font-bold tracking-tight">FotoFarma</span>
         </header>
 
-        <main className="mx-auto grid w-full max-w-xl flex-1 content-center gap-10 py-10 lg:max-w-none lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-24">
+        <main className="mx-auto grid w-full max-w-xl flex-1 content-center gap-10 py-10 lg:max-w-none lg:grid-cols-[1fr_1fr] lg:items-center lg:gap-20">
           <section>
-            <p className="font-serif text-6xl leading-none text-[#2f5d46] lg:text-7xl" aria-hidden="true">℞</p>
-            <h1 className="mt-5 font-serif text-[2.6rem] leading-[1.05] font-medium tracking-tight sm:text-5xl lg:text-7xl">
-              Tus medicinas,<br />a su hora.
-            </h1>
-            <p className="mt-5 max-w-md text-[15px] leading-relaxed text-[#46534b] lg:text-base">
+            <motion.h1
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, ease: [0.2, 0.8, 0.2, 1] }}
+              className="text-[clamp(2.4rem,6vw,4.25rem)] leading-[1.02] font-bold tracking-tight"
+            >
+              Tus medicinas,<br /><span className="text-brand">a su hora.</span>
+            </motion.h1>
+            <p className="mt-5 max-w-md text-[clamp(1rem,1.6vw,1.15rem)] leading-relaxed text-muted">
               Toma una foto de tu receta y arma tu calendario de tomas. Todo se guarda en este dispositivo; no necesitas cuenta.
             </p>
-          </section>
 
-          <section className="flex flex-col gap-8">
-            <ol className="border-t border-[#cfc6b4]">
-              {PASOS.map(p => (
-                <li key={p.n} className="grid grid-cols-[2rem_1fr] gap-2 border-b border-[#cfc6b4] py-4">
-                  <span className="font-serif text-sm text-[#2f5d46] pt-0.5">{p.n}</span>
-                  <div>
-                    <p className="font-semibold text-[15px]">{p.titulo}</p>
-                    <p className="text-sm text-[#5b6b61]">{p.texto}</p>
-                  </div>
-                </li>
+            <ol className="mt-8 space-y-3">
+              {PASOS.map(({ Icon, tono, titulo, texto }, i) => (
+                <motion.li
+                  key={titulo}
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.4, delay: 0.15 + i * 0.08, ease: [0.2, 0.8, 0.2, 1] }}
+                  className="flex items-center gap-4 rounded-[20px] bg-card/80 p-3 pr-5 shadow-soft"
+                >
+                  <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${tono}`}><Icon className="h-6 w-6" /></span>
+                  <span>
+                    <span className="block font-semibold">{titulo}</span>
+                    <span className="block text-sm text-muted">{texto}</span>
+                  </span>
+                </motion.li>
               ))}
             </ol>
 
-            <div className="space-y-4">
+            <div className="mt-8 space-y-4">
               <button
                 onClick={onStart}
-                className="w-full rounded-md bg-[#2f5d46] py-4 text-[15px] font-semibold text-[#f3eee4] transition-colors hover:bg-[#264d3a] active:bg-[#1f4030]"
+                className="group flex w-full items-center justify-center gap-2 rounded-2xl bg-brand py-4 text-lg font-semibold text-white shadow-[0_16px_30px_-14px_rgb(62_102_214/0.9)] hover:bg-brand-strong lg:max-w-sm"
               >
                 Empezar
+                <ArrowRight className="h-5 w-5 transition-transform duration-200 group-hover:translate-x-1" />
               </button>
-              <p className="text-center text-xs leading-relaxed text-[#5b6b61] lg:text-left">
+              <p className="text-center text-sm text-muted lg:max-w-sm">
                 FotoFarma no sustituye a tu médico ni a tu farmacéutico.{' '}
-                <button onClick={() => setShowTerms(true)} className="underline underline-offset-2 text-[#1f2a24]">
-                  Aviso legal
-                </button>
+                <button onClick={() => setShowTerms(true)} className="font-medium text-ink underline underline-offset-2">Aviso legal</button>
               </p>
             </div>
           </section>
+
+          <div className="hidden pb-24 lg:block">
+            <PortadaMuestra />
+          </div>
         </main>
       </div>
 
       <AnimatePresence>
         {showTerms && (
-          <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center bg-black/40 p-4">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] flex items-end justify-center bg-ink/40 p-4 backdrop-blur-sm sm:items-center"
+            onClick={(e) => { if (e.target === e.currentTarget) setShowTerms(false); }}
+          >
             <motion.div
               initial={{ y: 24, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 24, opacity: 0 }}
-              className="w-full max-w-md rounded-lg bg-[#fbf8f2] text-[#1f2a24] shadow-xl"
+              className="w-full max-w-md rounded-[28px] bg-card text-ink shadow-2xl"
             >
-              <div className="flex items-center justify-between border-b border-[#cfc6b4] px-5 py-4">
-                <h3 className="font-serif text-xl font-semibold">Aviso legal</h3>
-                <button onClick={() => setShowTerms(false)} className="text-[#5b6b61]" aria-label="Cerrar">
-                  <X className="w-5 h-5" />
+              <div className="flex items-center justify-between px-6 pt-6 pb-2">
+                <h3 className="text-xl font-semibold">Aviso legal</h3>
+                <button onClick={() => setShowTerms(false)} className="flex h-9 w-9 items-center justify-center rounded-full bg-canvas text-muted" aria-label="Cerrar">
+                  <X className="h-5 w-5" />
                 </button>
               </div>
-              <div className="max-h-[55vh] space-y-4 overflow-y-auto px-5 py-5 text-sm leading-relaxed text-[#46534b]">
-                <p>FotoFarma es una herramienta de apoyo. <b className="text-[#1f2a24]">No es un dispositivo médico</b> ni reemplaza la consulta con un profesional de la salud.</p>
+              <div className="max-h-[55vh] space-y-4 overflow-y-auto px-6 py-4 text-sm leading-relaxed text-muted">
+                <p className="rounded-2xl bg-sun-soft p-4 text-ink">FotoFarma es una herramienta de apoyo. <b>No es un dispositivo médico</b> ni reemplaza la consulta con un profesional de la salud.</p>
                 <section>
-                  <h4 className="font-semibold text-[#1f2a24]">1. Lectura automática</h4>
+                  <h4 className="font-semibold text-ink">1. Lectura automática</h4>
                   <p>La lectura de la foto la hace un modelo de inteligencia artificial y puede equivocarse con la letra o con el nombre de un medicamento.</p>
                 </section>
                 <section>
-                  <h4 className="font-semibold text-[#1f2a24]">2. Revisión obligatoria</h4>
+                  <h4 className="font-semibold text-ink">2. Revisión obligatoria</h4>
                   <p>Antes de guardar, comprueba que cada medicamento, dosis y horario coincida con lo que indicó tu médico.</p>
                 </section>
                 <section>
-                  <h4 className="font-semibold text-[#1f2a24]">3. Interacciones</h4>
+                  <h4 className="font-semibold text-ink">3. Interacciones</h4>
                   <p>La revisión de interacciones busca casos conocidos, pero no cubre todos los posibles.</p>
                 </section>
                 <section>
-                  <h4 className="font-semibold text-[#1f2a24]">4. Tus datos</h4>
+                  <h4 className="font-semibold text-ink">4. Tus datos</h4>
                   <p>Tus recetas y recordatorios se guardan solo en este navegador. Si borras los datos del navegador, se pierden.</p>
                 </section>
               </div>
-              <div className="border-t border-[#cfc6b4] px-5 py-4">
-                <button
-                  onClick={() => setShowTerms(false)}
-                  className="w-full rounded-md bg-[#1f2a24] py-3 text-sm font-semibold text-[#f3eee4]"
-                >
-                  Entendido
-                </button>
+              <div className="px-6 pt-2 pb-6">
+                <button onClick={() => setShowTerms(false)} className="w-full rounded-2xl bg-ink py-3.5 font-semibold text-white">Entendido</button>
               </div>
             </motion.div>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </motion.div>
@@ -677,19 +802,19 @@ const CameraView = ({ setView, setCapturedImage }: { setView: (v: View) => void,
       <div className="mx-auto max-w-md flex items-center justify-between">
         <button 
           onClick={() => setView('gallery')}
-          className="w-14 h-14 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-all"
+          className="w-14 h-14 bg-card/20 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-card/30 transition-all"
         >
           <ImageIcon className="w-7 h-7" />
         </button>
 
         <button 
           onClick={takePhoto}
-          className="w-20 h-20 bg-white rounded-full border-4 border-white/30 shadow-2xl transition-transform"
+          className="w-20 h-20 bg-card rounded-full border-4 border-white/30 shadow-2xl transition-transform"
         />
 
         <button 
           onClick={() => setView('calendar')}
-          className="w-14 h-14 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-all"
+          className="w-14 h-14 bg-card/20 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-card/30 transition-all"
         >
           <CalendarIcon className="w-7 h-7" />
         </button>
@@ -707,10 +832,104 @@ interface CalendarViewProps {
   key?: string;
 }
 
+// Botón redondo con contorno (← y + de los bocetos)
+const CircleButton = ({ onClick, label, children }: { onClick: () => void; label: string; children: ReactNode }) => (
+  <button
+    onClick={onClick}
+    aria-label={label}
+    className="flex h-[clamp(48px,6.5vmin,60px)] w-[clamp(48px,6.5vmin,60px)] shrink-0 items-center justify-center rounded-full border-[2.5px] border-ink bg-card text-ink hover:bg-ink hover:text-white"
+  >
+    {children}
+  </button>
+);
+
+type Draft = { id?: string; name: string; dosage: string; time: string };
+
+const MedSheet = ({ draft, date, onClose }: { draft: Draft; date: string; onClose: () => void; key?: string }) => {
+  const [form, setForm] = useState<Draft>(draft);
+  const editing = !!draft.id;
+  const valid = form.name.trim() !== '' && /^\d{2}:\d{2}$/.test(form.time);
+
+  const save = async () => {
+    if (!valid || !auth.currentUser) return;
+    const data = { name: form.name.trim(), dosage: form.dosage.trim(), time: form.time };
+    try {
+      if (editing) await updateDoc(doc(db, 'reminders', draft.id!), data);
+      else await addDoc(collection(db, 'reminders'), { ...data, uid: auth.currentUser.uid, date, completed: false, comments: '' });
+      onClose();
+    } catch (error) {
+      handleFirestoreError(error, editing ? 'update' : 'create', 'reminders');
+    }
+  };
+
+  const remove = async () => {
+    try {
+      await deleteDoc(doc(db, 'reminders', draft.id!));
+      onClose();
+    } catch (error) {
+      handleFirestoreError(error, 'delete', `reminders/${draft.id}`);
+    }
+  };
+
+  const field = 'w-full rounded-2xl border border-line bg-canvas px-4 py-3.5 text-base text-ink outline-none transition-colors placeholder:text-faint focus:border-brand focus:bg-card';
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[110] flex items-end justify-center bg-ink/40 backdrop-blur-sm md:items-center md:p-6"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <motion.form
+        initial={{ y: 40, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 40, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 380, damping: 34 }}
+        onSubmit={(e) => { e.preventDefault(); save(); }}
+        className="w-full max-w-md rounded-t-[32px] bg-card p-6 pb-[max(24px,env(safe-area-inset-bottom))] shadow-2xl md:rounded-[32px] md:p-8"
+      >
+        <div className="mb-6 flex items-center justify-between">
+          <h3 className="text-2xl font-semibold text-ink">{editing ? 'Editar toma' : 'Nueva toma'}</h3>
+          <button type="button" onClick={onClose} aria-label="Cerrar" className="flex h-10 w-10 items-center justify-center rounded-full bg-canvas text-muted hover:text-ink">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="space-y-4">
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-muted">Medicamento</span>
+            <input autoFocus className={field} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Ej. Ibuprofeno" />
+          </label>
+          <div className="grid grid-cols-[1fr_auto] gap-3">
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-muted">Dosis</span>
+              <input className={field} value={form.dosage} onChange={e => setForm({ ...form, dosage: e.target.value })} placeholder="400 mg · 1 tableta" />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-muted">Hora</span>
+              <input type="time" className={`${field} font-semibold tabular-nums`} value={form.time} onChange={e => setForm({ ...form, time: e.target.value })} />
+            </label>
+          </div>
+        </div>
+        <div className="mt-8 flex gap-3">
+          {editing && (
+            <button type="button" onClick={remove} className="flex items-center justify-center gap-2 rounded-2xl bg-bad-soft px-5 py-4 font-semibold text-bad hover:bg-[#fbdde1]">
+              <Trash2 className="h-5 w-5" /> <span className="hidden sm:inline">Eliminar</span>
+            </button>
+          )}
+          <button type="submit" disabled={!valid} className="flex-1 rounded-2xl bg-brand py-4 font-semibold text-white shadow-[0_12px_24px_-12px_rgb(62_102_214/0.8)] hover:bg-brand-strong disabled:opacity-40">
+            {editing ? 'Guardar cambios' : 'Agregar'}
+          </button>
+        </div>
+      </motion.form>
+    </motion.div>
+  );
+};
+
 const CalendarView = ({ setView, requestPermission, notificationPermission, toggleComplete }: CalendarViewProps) => {
   const [reminders, setReminders] = useState<Medication[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showConfirm, setShowConfirm] = useState(false);
+  const [draft, setDraft] = useState<Draft | null>(null);
   const todayStr = getLocalDateString(new Date());
   const [selectedDate, setSelectedDate] = useState(todayStr);
 
@@ -727,10 +946,10 @@ const CalendarView = ({ setView, requestPermission, notificationPermission, togg
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => {
         const d = doc.data();
-        return { 
-          id: doc.id, 
-          ...d, 
-          name: d.name || d.medicationName || 'Medicamento' 
+        return {
+          id: doc.id,
+          ...d,
+          name: d.name || d.medicationName || 'Medicamento'
         } as Medication;
       });
       setReminders(data);
@@ -741,27 +960,6 @@ const CalendarView = ({ setView, requestPermission, notificationPermission, togg
 
     return () => unsubscribe();
   }, [selectedDate]);
-
-  const deleteReminder = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, 'reminders', id));
-    } catch (error) {
-      handleFirestoreError(error, 'delete', `reminders/${id}`);
-    }
-  };
-
-  const deleteAllReminders = async () => {
-    if (!auth.currentUser) return;
-
-    try {
-      const q = query(collection(db, 'reminders'), where('uid', '==', auth.currentUser.uid));
-      const snapshot = await getDocs(q);
-      const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
-      await Promise.all(deletePromises);
-    } catch (error) {
-      handleFirestoreError(error, 'delete', 'reminders/all');
-    }
-  };
 
   const dayStripRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -775,145 +973,97 @@ const CalendarView = ({ setView, requestPermission, notificationPermission, togg
 
   const days = Array.from({ length: 31 }, (_, i) => {
     const d = new Date();
-    d.setDate(d.getDate() + i - 15); // Show 15 days before and 15 days after today
+    d.setDate(d.getDate() + i - 15); // 15 días antes y 15 después de hoy
     return getLocalDateString(d);
   });
-  
+
+  const [y, m, d] = selectedDate.split('-').map(Number);
+  const titulo = new Date(y, m - 1, d).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
+  const hechas = reminders.filter(r => r.completed).length;
+
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
-      className="min-h-dvh bg-zinc-50 px-[clamp(16px,4vw,56px)] pt-[clamp(16px,3.5vh,44px)] pb-[calc(var(--nav-h)+24px)]"
+      transition={{ duration: 0.25, ease: [0.2, 0.8, 0.2, 1] }}
+      className="min-h-dvh bg-canvas px-[clamp(16px,4vw,56px)] pt-[max(clamp(16px,3.5vh,44px),env(safe-area-inset-top))] pb-[calc(var(--nav-h)+24px)]"
     >
       <div className="mx-auto max-w-6xl">
-      <header className="flex items-center justify-between mb-8">
-        <button onClick={() => setView('dashboard')} className="w-10 h-10 -ml-2 rounded-full flex items-center justify-center text-zinc-600 hover:bg-zinc-100">
-          <ChevronLeft className="w-6 h-6" />
-        </button>
-        <div className="text-center">
-          <h2 className="text-[clamp(1.25rem,3vmin,2rem)] font-bold text-zinc-900 first-letter:uppercase">
-            {(() => {
-              const [y, m, d] = selectedDate.split('-').map(Number);
-              return new Date(y, m - 1, d).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
-            })()}
-          </h2>
-          <p className="text-sm text-zinc-500">
-            {reminders.length} recordatorios para este día
-          </p>
+        <header className="flex items-center justify-between gap-4">
+          <CircleButton onClick={() => setView('dashboard')} label="Volver"><ArrowLeft className="h-[45%] w-[45%]" strokeWidth={2.5} /></CircleButton>
+          <div className="min-w-0 text-center">
+            <h2 className="truncate text-[clamp(1.2rem,3vmin,2rem)] font-semibold text-ink first-letter:uppercase">{titulo}</h2>
+            <p className="text-sm text-muted">
+              {reminders.length === 0 ? 'Sin tomas' : `${hechas} de ${reminders.length} tomadas`}
+            </p>
+          </div>
+          <CircleButton onClick={() => setDraft({ name: '', dosage: '', time: '08:00' })} label="Agregar toma"><Plus className="h-[50%] w-[50%]" strokeWidth={2.5} /></CircleButton>
+        </header>
+
+        <div ref={dayStripRef} className="relative -mx-2 my-[clamp(16px,3vh,28px)] flex gap-2.5 overflow-x-auto px-2 py-2 scrollbar-hide">
+          {days.map(dateStr => {
+            const [yy, mm, dd] = dateStr.split('-').map(Number);
+            const dt = new Date(yy, mm - 1, dd);
+            const isSelected = dateStr === selectedDate;
+            const isToday = dateStr === todayStr;
+            return (
+              <button
+                key={dateStr}
+                data-date={dateStr}
+                onClick={() => setSelectedDate(dateStr)}
+                className={`flex h-[clamp(72px,9vmin,92px)] w-[clamp(56px,7vmin,72px)] shrink-0 flex-col items-center justify-center rounded-2xl ${isSelected ? 'bg-brand text-white shadow-[0_12px_24px_-12px_rgb(62_102_214/0.9)]' : 'bg-card text-ink shadow-soft hover:bg-brand-soft'}`}
+              >
+                <span className={`text-xs font-medium uppercase ${isSelected ? 'text-white/80' : 'text-muted'}`}>{dt.toLocaleDateString('es-MX', { weekday: 'short' }).replace('.', '')}</span>
+                <span className="text-xl font-semibold">{dt.getDate()}</span>
+                {isToday && <span className={`mt-0.5 h-1 w-1 rounded-full ${isSelected ? 'bg-card' : 'bg-brand'}`} />}
+              </button>
+            );
+          })}
         </div>
-        <div className="flex items-center gap-1">
-          {notificationPermission !== 'granted' && (
-            <button 
-              onClick={requestPermission}
-              className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-full transition-colors animate-pulse"
-              title="Activar notificaciones"
-            >
-              <Bell className="w-6 h-6" />
-            </button>
-          )}
-          <button 
-            onClick={() => setShowConfirm(true)}
-            className="p-2 text-rose-500 hover:bg-rose-50 rounded-full transition-colors"
-            title="Eliminar todos los recordatorios"
-          >
-            <Trash2 className="w-6 h-6" />
+
+        {notificationPermission !== 'granted' && 'Notification' in window && (
+          <button onClick={requestPermission} className="mb-5 flex w-full items-center gap-3 rounded-2xl bg-sun-soft px-4 py-3 text-left">
+            <Bell className="h-5 w-5 shrink-0 text-sun-strong" />
+            <span className="flex-1 text-sm text-ink"><b className="font-semibold">Activa los avisos</b> para que te recordemos cada toma.</span>
+            <ChevronRight className="h-5 w-5 text-sun-strong" />
           </button>
-        </div>
-      </header>
+        )}
 
-      <div ref={dayStripRef} className="relative -mx-2 mb-4 flex gap-3 overflow-x-auto px-2 py-2 scrollbar-hide">
-        {days.map(dateStr => {
-          const [y, m, dayNum] = dateStr.split('-').map(Number);
-          const d = new Date(y, m - 1, dayNum);
-          const isSelected = dateStr === selectedDate;
-          return (
-            <button 
-              key={dateStr}
-              data-date={dateStr}
-              onClick={() => setSelectedDate(dateStr)}
-              className={`flex-shrink-0 w-[clamp(60px,7vmin,80px)] h-[clamp(76px,9vmin,100px)] rounded-2xl flex flex-col items-center justify-center transition-all ${isSelected ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-100' : 'bg-white text-zinc-900 border border-zinc-200'}`}
-            >
-              <span className="text-xs uppercase font-medium opacity-60">{d.toLocaleDateString('es-ES', { weekday: 'short' })}</span>
-              <span className="text-xl font-bold">{d.getDate()}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="space-y-4">
-        <h3 className="font-semibold text-zinc-900 px-1 md:text-lg">Recordatorios</h3>
         {loading ? (
-          <div className="flex justify-center p-8"><Loader2 className="w-8 h-8 animate-spin text-emerald-600" /></div>
+          <div className="flex justify-center p-12"><Loader2 className="h-8 w-8 animate-spin text-brand" /></div>
         ) : reminders.length === 0 ? (
-          <div className="text-center p-12 bg-white rounded-3xl border border-dashed border-zinc-200 text-zinc-400">
-            No hay recordatorios para este día
+          <div className="flex flex-col items-center gap-3 rounded-[24px] border-2 border-dashed border-line p-12 text-center">
+            <p className="font-semibold text-ink">No hay tomas este día</p>
+            <button onClick={() => setDraft({ name: '', dosage: '', time: '08:00' })} className="rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-strong">Agregar toma</button>
           </div>
         ) : (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {reminders.map(med => (
-            <div key={med.id} className={`bg-white p-4 rounded-2xl border border-zinc-100 shadow-sm flex items-center gap-4 transition-all ${med.completed ? 'opacity-60 grayscale-[0.5]' : ''}`}>
-              <button 
-                onClick={() => toggleComplete(med)}
-                className={`flex-shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-sm transition-colors ${med.completed ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-600'}`}
-              >
-                {med.completed ? <Check className="w-6 h-6" /> : med.time}
-              </button>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <h4 className={`font-semibold text-zinc-900 truncate ${med.completed ? 'line-through' : ''}`}>
-                    {med.name}
-                  </h4>
-                  <input 
-                    type="time" 
-                    value={med.time}
-                    onChange={async (e) => {
-                      try {
-                        await updateDoc(doc(db, 'reminders', med.id!), {
-                          time: e.target.value
-                        });
-                      } catch (error) {
-                        handleFirestoreError(error, 'update', `reminders/${med.id}`);
-                      }
-                    }}
-                    className="ml-auto bg-zinc-50 border border-zinc-100 rounded-lg px-2 py-1 text-xs font-bold text-zinc-500 focus:ring-1 focus:ring-emerald-500 outline-none"
-                  />
-                </div>
-                <p className="text-xs text-zinc-500 truncate">{med.dosage}</p>
-                {med.comments && (
-                  <div className="mt-1 flex items-start gap-1 p-2 bg-indigo-50/50 rounded-xl border border-indigo-100/50">
-                    <Info className="w-3 h-3 text-indigo-500 mt-0.5 flex-shrink-0" />
-                    <p className="text-[10px] text-indigo-700 leading-tight italic">{med.comments}</p>
-                  </div>
-                )}
-                {med.endDate && (
-                  <div className="mt-1 flex items-center gap-1">
-                    <CalendarIcon className="w-3 h-3 text-zinc-300" />
-                    <p className="text-[10px] text-zinc-400 font-medium">Hasta el {med.endDate}</p>
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <button 
-                  onClick={() => deleteReminder(med.id!)}
-                  className="w-10 h-10 rounded-full bg-zinc-50 flex items-center justify-center text-zinc-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                >
-                  <Trash2 className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-          ))}
+          // Lista para palomear: una columna en celular, rejilla con divisores en iPad y compu
+          <div className="overflow-hidden rounded-[24px] bg-card shadow-soft">
+            <ul className="-mr-px -mb-px grid sm:grid-cols-2 lg:grid-cols-3">
+              {reminders.map(med => (
+                <li key={med.id} className="flex items-center gap-3 px-[clamp(18px,2.6vmin,28px)] py-[clamp(16px,2.6vmin,26px)] shadow-[inset_-1px_0_0_var(--color-line),inset_0_-1px_0_var(--color-line)]">
+                  <button onClick={() => setDraft({ id: med.id, name: med.name, dosage: med.dosage, time: med.time })} className="min-w-0 flex-1 text-left">
+                    <span className={`block text-[clamp(1.05rem,2.2vmin,1.3rem)] font-medium leading-snug ${med.completed ? 'text-muted' : 'text-ink'}`}>{med.name}</span>
+                    <span className="mt-0.5 flex items-center gap-2 text-sm text-muted">
+                      <span className={`h-2 w-2 shrink-0 rounded-full ${toneFor(med.name).edge}`} />
+                      <span className="tabular-nums">{formatHora(med.time)}</span>
+                      {med.dosage && <span className="truncate">· {med.dosage}</span>}
+                    </span>
+                  </button>
+                  <button onClick={() => toggleComplete(med)} aria-label={med.completed ? `Desmarcar ${med.name}` : `Marcar ${med.name} como tomado`} className="rounded-full">
+                    <CheckCircle done={med.completed} className="h-[clamp(40px,5.5vmin,52px)] w-[clamp(40px,5.5vmin,52px)]" />
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </div>
-      </div>
-      <ConfirmModal 
-        isOpen={showConfirm}
-        onClose={() => setShowConfirm(false)}
-        onConfirm={deleteAllReminders}
-        title="¿Vaciar Calendario?"
-        message="¿Estás seguro de que quieres eliminar TODOS los recordatorios de todos los días? Esta acción no se puede deshacer."
-      />
+
+      <AnimatePresence>
+        {draft && <MedSheet key="sheet" draft={draft} date={selectedDate} onClose={() => setDraft(null)} />}
+      </AnimatePresence>
     </motion.div>
   );
 };
@@ -926,7 +1076,6 @@ interface GalleryViewProps {
 const GalleryView = ({ setView }: GalleryViewProps) => {
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showConfirm, setShowConfirm] = useState(false);
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -948,70 +1097,56 @@ const GalleryView = ({ setView }: GalleryViewProps) => {
     return () => unsubscribe();
   }, []);
 
-  const deleteAllPrescriptions = async () => {
-    if (!auth.currentUser) return;
-
-    try {
-      const q = query(collection(db, 'prescriptions'), where('uid', '==', auth.currentUser.uid));
-      const snapshot = await getDocs(q);
-      const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
-      await Promise.all(deletePromises);
-    } catch (error) {
-      handleFirestoreError(error, 'delete', 'prescriptions/all');
-    }
-  };
-
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
-      className="min-h-dvh bg-white pb-[calc(var(--nav-h)+24px)]"
+      transition={{ duration: 0.25, ease: [0.2, 0.8, 0.2, 1] }}
+      className="min-h-dvh bg-canvas px-[clamp(16px,4vw,56px)] pt-[max(clamp(16px,3.5vh,44px),env(safe-area-inset-top))] pb-[calc(var(--nav-h)+24px)]"
     >
-      <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-zinc-100">
-      <div className="mx-auto max-w-6xl px-[clamp(16px,4vw,56px)] py-4 flex items-center justify-between">
-        <button onClick={() => setView('dashboard')} className="w-10 h-10 bg-zinc-100 rounded-full flex items-center justify-center text-zinc-600">
-          <ChevronLeft className="w-6 h-6" />
-        </button>
-        <h2 className="text-[clamp(1.4rem,3vmin,2rem)] font-bold text-zinc-900">Mis recetas</h2>
-        <div className="flex items-center gap-2">
-          <button 
-            onClick={() => setShowConfirm(true)}
-            className="w-10 h-10 bg-rose-50 rounded-full flex items-center justify-center text-rose-500 hover:bg-rose-100 transition-colors"
-            title="Eliminar todas las recetas"
-          >
-            <Trash2 className="w-6 h-6" />
-          </button>
-        </div>
-      </div>
-      </div>
+      <div className="mx-auto max-w-6xl">
+        <header className="mb-[clamp(20px,4vh,36px)] flex items-center justify-between gap-4">
+          <CircleButton onClick={() => setView('dashboard')} label="Volver"><ArrowLeft className="h-[45%] w-[45%]" strokeWidth={2.5} /></CircleButton>
+          <div className="text-center">
+            <h2 className="text-[clamp(1.3rem,3vmin,2rem)] font-semibold text-ink">Mis recetas</h2>
+            <p className="text-sm text-muted">{prescriptions.length === 1 ? '1 receta guardada' : `${prescriptions.length} recetas guardadas`}</p>
+          </div>
+          <CircleButton onClick={() => setView('camera')} label="Escanear receta"><Plus className="h-[50%] w-[50%]" strokeWidth={2.5} /></CircleButton>
+        </header>
 
-      <div className="mx-auto max-w-6xl px-[clamp(16px,4vw,56px)] py-6">
         {loading ? (
-          <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-emerald-600" /></div>
+          <div className="flex justify-center p-12"><Loader2 className="h-8 w-8 animate-spin text-brand" /></div>
         ) : prescriptions.length === 0 ? (
-          <div className="text-center p-12 text-zinc-400">No has escaneado ninguna receta aún</div>
+          <div className="flex flex-col items-center gap-3 rounded-[24px] border-2 border-dashed border-line p-12 text-center">
+            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-sun-soft text-sun"><ImageIcon className="h-7 w-7" /></span>
+            <p className="font-semibold text-ink">Aún no has escaneado recetas</p>
+            <button onClick={() => setView('camera')} className="rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-strong">Escanear receta</button>
+          </div>
         ) : (
           <div className="grid grid-cols-2 gap-[clamp(12px,2vmin,24px)] sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            {prescriptions.map(p => (
-              <div key={p.id} className="tile aspect-[3/4] bg-zinc-100 rounded-2xl overflow-hidden relative group shadow-sm">
-                <img src={p.imageUrl} alt="Prescription" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/60 to-transparent text-white">
-                  <p className="text-[10px] opacity-80">{new Date(p.scannedAt?.toDate?.() || p.scannedAt).toLocaleDateString()}</p>
-                  <p className="text-xs font-semibold truncate">{p.medications?.length || 0} medicamentos</p>
+            {prescriptions.map((p, i) => (
+              <motion.div
+                key={p.id}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: Math.min(i, 10) * 0.03, ease: [0.2, 0.8, 0.2, 1] }}
+                className="tile relative aspect-[3/4] overflow-hidden rounded-[22px] bg-card shadow-soft"
+              >
+                {p.imageUrl ? (
+                  <img src={p.imageUrl} alt="Receta" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  <div className="flex h-full items-center justify-center bg-brand-soft text-brand"><ImageIcon className="h-10 w-10" /></div>
+                )}
+                <div className="absolute inset-x-2 bottom-2 rounded-2xl bg-card/90 px-3 py-2 backdrop-blur">
+                  <p className="text-xs text-muted">{new Date(p.scannedAt?.toDate?.() || p.scannedAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                  <p className="truncate text-sm font-semibold text-ink">{p.medications?.length || 0} medicamentos</p>
                 </div>
-              </div>
+              </motion.div>
             ))}
           </div>
         )}
       </div>
-      <ConfirmModal 
-        isOpen={showConfirm}
-        onClose={() => setShowConfirm(false)}
-        onConfirm={deleteAllPrescriptions}
-        title="¿Vaciar Galería?"
-        message="¿Estás seguro de que quieres eliminar TODAS las recetas guardadas? Esta acción no se puede deshacer."
-      />
     </motion.div>
   );
 };
@@ -1165,20 +1300,20 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
         
         {isProcessing ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
-            <Loader2 className="w-16 h-16 text-emerald-500 animate-spin mb-4" />
+            <Loader2 className="w-16 h-16 text-brand animate-spin mb-4" />
             <p className="text-lg font-medium">IA Analizando receta...</p>
-            <p className="text-sm text-zinc-400">Extrayendo medicamentos con Gemini</p>
+            <p className="text-sm text-faint">Extrayendo medicamentos con Gemini</p>
           </div>
         ) : error ? (
-          <div className="absolute inset-x-0 bottom-0 p-8 bg-white rounded-t-[32px] text-center md:inset-x-auto md:right-8 md:bottom-8 md:w-[420px] md:rounded-[32px] md:shadow-2xl">
-            <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="absolute inset-x-0 bottom-0 p-8 bg-card rounded-t-[32px] text-center md:inset-x-auto md:right-8 md:bottom-8 md:w-[420px] md:rounded-[32px] md:shadow-2xl">
+            <div className="w-16 h-16 bg-bad-soft text-bad rounded-full flex items-center justify-center mx-auto mb-4">
               <X className="w-8 h-8" />
             </div>
-            <h3 className="text-xl font-bold text-zinc-900 mb-2">Error de Análisis</h3>
-            <p className="text-zinc-500 mb-8">{error}</p>
+            <h3 className="text-xl font-bold text-ink mb-2">Error de Análisis</h3>
+            <p className="text-muted mb-8">{error}</p>
             <button 
               onClick={() => setView('camera')}
-              className="w-full py-4 bg-emerald-600 text-white font-semibold rounded-2xl shadow-lg hover:bg-emerald-700 transition-colors"
+              className="w-full py-4 bg-brand text-white font-semibold rounded-2xl shadow-lg hover:bg-brand-strong transition-colors"
             >
               Volver a intentar
             </button>
@@ -1188,20 +1323,20 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
             initial={{ y: 40, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ duration: 0.3, ease: [0.2, 0.8, 0.2, 1] }}
-            className="absolute inset-x-0 bottom-0 p-6 bg-white rounded-t-[32px] max-h-[85dvh] overflow-y-auto md:inset-x-auto md:right-0 md:top-0 md:bottom-0 md:max-h-none md:w-[min(560px,50vw)] md:rounded-none md:rounded-l-[32px] md:p-8"
+            className="absolute inset-x-0 bottom-0 p-6 bg-card rounded-t-[32px] max-h-[85dvh] overflow-y-auto md:inset-x-auto md:right-0 md:top-0 md:bottom-0 md:max-h-none md:w-[min(560px,50vw)] md:rounded-none md:rounded-l-[32px] md:p-8"
           >
-            <div className="w-12 h-1.5 bg-zinc-200 rounded-full mx-auto mb-6 md:hidden" />
+            <div className="w-12 h-1.5 bg-line rounded-full mx-auto mb-6 md:hidden" />
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-zinc-900">Configurar Horarios</h3>
-              <span className="text-xs font-semibold px-2 py-1 bg-emerald-100 text-emerald-700 rounded-lg">IA Detectado</span>
+              <h3 className="text-xl font-bold text-ink">Configurar Horarios</h3>
+              <span className="text-xs font-semibold px-2 py-1 bg-brand-soft text-brand-strong rounded-lg">IA Detectado</span>
             </div>
 
             {/* IA Security Audit Section */}
             <div className="mb-8">
               {isAuditing ? (
-                <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100 flex items-center gap-3">
-                  <Loader2 className="w-5 h-5 text-indigo-600 animate-spin" />
-                  <p className="text-sm font-semibold text-indigo-600">Verificando seguridad con IA...</p>
+                <div className="p-4 bg-lav-soft rounded-2xl border border-lav-soft flex items-center gap-3">
+                  <Loader2 className="w-5 h-5 text-lav animate-spin" />
+                  <p className="text-sm font-semibold text-lav">Verificando seguridad con IA...</p>
                 </div>
               ) : auditResults ? (
                 <motion.div 
@@ -1209,13 +1344,13 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
                   animate={{ opacity: 1, y: 0 }}
                   className="space-y-4"
                 >
-                  <div className={`p-4 rounded-3xl border ${auditResults.safetyScore > 80 ? 'bg-emerald-50 border-emerald-100' : auditResults.safetyScore > 50 ? 'bg-amber-50 border-amber-100' : 'bg-rose-50 border-rose-100'}`}>
+                  <div className={`p-4 rounded-3xl border ${auditResults.safetyScore > 80 ? 'bg-brand-soft border-brand-soft' : auditResults.safetyScore > 50 ? 'bg-sun-soft border-sun-soft' : 'bg-bad-soft border-bad-soft'}`}>
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-2">
-                        {auditResults.safetyScore > 80 ? <ShieldCheck className="w-5 h-5 text-emerald-600" /> : <ShieldAlert className="w-5 h-5 text-amber-600" />}
-                        <span className="font-bold text-zinc-900">Auditoría de Seguridad</span>
+                        {auditResults.safetyScore > 80 ? <ShieldCheck className="w-5 h-5 text-brand" /> : <ShieldAlert className="w-5 h-5 text-sun-strong" />}
+                        <span className="font-bold text-ink">Auditoría de Seguridad</span>
                       </div>
-                      <span className={`text-lg font-black ${auditResults.safetyScore > 80 ? 'text-emerald-600' : auditResults.safetyScore > 50 ? 'text-amber-600' : 'text-rose-600'}`}>
+                      <span className={`text-lg font-black ${auditResults.safetyScore > 80 ? 'text-brand' : auditResults.safetyScore > 50 ? 'text-sun-strong' : 'text-bad'}`}>
                         {auditResults.safetyScore}%
                       </span>
                     </div>
@@ -1223,7 +1358,7 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
                     {auditResults.warnings?.length > 0 && (
                       <div className="space-y-2 mb-3">
                         {auditResults.warnings.map((w: string, i: number) => (
-                          <div key={i} className="flex gap-2 text-xs text-rose-700 font-medium bg-rose-100/50 p-2 rounded-lg">
+                          <div key={i} className="flex gap-2 text-xs text-bad font-medium bg-bad-soft/50 p-2 rounded-lg">
                             <AlertTriangle className="w-4 h-4 flex-shrink-0" />
                             {w}
                           </div>
@@ -1234,12 +1369,12 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
                     {auditResults.interactions?.length > 0 && (
                       <div className="space-y-2 mb-3">
                         {auditResults.interactions.map((inter: any, i: number) => (
-                          <div key={i} className="p-3 bg-white/50 rounded-xl border border-zinc-100">
+                          <div key={i} className="p-3 bg-card/50 rounded-xl border border-canvas">
                              <div className="flex items-center gap-2 mb-1">
-                               <AlertTriangle className={`w-4 h-4 ${inter.risk === 'high' ? 'text-rose-600' : 'text-amber-600'}`} />
-                               <span className="text-xs font-bold text-zinc-900 capitalize">Riesgo {inter.risk}: {inter.medA} + {inter.medB}</span>
+                               <AlertTriangle className={`w-4 h-4 ${inter.risk === 'high' ? 'text-bad' : 'text-sun-strong'}`} />
+                               <span className="text-xs font-bold text-ink capitalize">Riesgo {inter.risk}: {inter.medA} + {inter.medB}</span>
                              </div>
-                             <p className="text-[10px] text-zinc-500">{inter.description}</p>
+                             <p className="text-[10px] text-muted">{inter.description}</p>
                           </div>
                         ))}
                       </div>
@@ -1248,7 +1383,7 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
                     {auditResults.recommendations?.length > 0 && (
                       <div className="space-y-1">
                         {auditResults.recommendations.map((rec: string, i: number) => (
-                          <div key={i} className="flex gap-2 text-[10px] text-indigo-700 font-semibold italic">
+                          <div key={i} className="flex gap-2 text-[10px] text-lav-strong font-semibold italic">
                             <Info className="w-3 h-3 flex-shrink-0" />
                             {rec}
                           </div>
@@ -1262,7 +1397,7 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
             
             <div className="space-y-4 mb-8">
               {results.map((med, idx) => (
-                <div key={idx} className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 space-y-3">
+                <div key={idx} className="p-4 bg-canvas rounded-2xl border border-canvas space-y-3">
                   <div className="flex items-center justify-between">
                     <input 
                       type="text" 
@@ -1272,9 +1407,9 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
                         newResults[idx].name = e.target.value;
                         setResults(newResults);
                       }}
-                      className="bg-transparent font-bold text-zinc-900 border-none p-0 focus:ring-0 w-full text-lg"
+                      className="bg-transparent font-bold text-ink border-none p-0 focus:ring-0 w-full text-lg"
                     />
-                    <Edit2 className="w-4 h-4 text-emerald-500" />
+                    <Edit2 className="w-4 h-4 text-brand" />
                   </div>
 
                   <div className="flex gap-2">
@@ -1286,22 +1421,22 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
                         newResults[idx].dosage = e.target.value;
                         setResults(newResults);
                       }}
-                      className="flex-1 bg-white px-3 py-1.5 rounded-lg text-sm text-zinc-600 border border-zinc-200 focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                      className="flex-1 bg-card px-3 py-1.5 rounded-lg text-sm text-muted border border-line focus:ring-1 focus:ring-brand focus:border-brand outline-none"
                       placeholder="Dosis"
                     />
                     <input 
                       type="text" 
                       value={med.frequency} 
                       readOnly
-                      className="flex-1 bg-zinc-100 px-3 py-1.5 rounded-lg text-xs text-zinc-400 border border-transparent outline-none cursor-default"
+                      className="flex-1 bg-canvas px-3 py-1.5 rounded-lg text-xs text-faint border border-transparent outline-none cursor-default"
                       placeholder="Frecuencia"
                     />
                   </div>
 
                   {med.comments && (
-                    <div className="flex gap-2 p-2 bg-indigo-50 rounded-xl border border-indigo-100">
-                      <Info className="w-4 h-4 text-indigo-500 mt-0.5 flex-shrink-0" />
-                      <p className="text-[10px] text-indigo-700 italic leading-relaxed">
+                    <div className="flex gap-2 p-2 bg-lav-soft rounded-xl border border-lav-soft">
+                      <Info className="w-4 h-4 text-lav mt-0.5 flex-shrink-0" />
+                      <p className="text-[10px] text-lav-strong italic leading-relaxed">
                         <b>Nota del doctor:</b> {med.comments}
                       </p>
                     </div>
@@ -1309,7 +1444,7 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
 
                   {/* Edición de Horarios Individuales */}
                   <div className="space-y-2">
-                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Horas de las tomas</p>
+                    <p className="text-[10px] font-bold text-faint uppercase tracking-wider">Horas de las tomas</p>
                     <div className="flex flex-wrap gap-2">
                       {med.times?.map((time: string, timeIdx: number) => (
                         <div key={timeIdx} className="relative group">
@@ -1321,7 +1456,7 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
                               newResults[idx].times[timeIdx] = e.target.value;
                               setResults(newResults);
                             }}
-                            className="bg-white border border-zinc-200 rounded-xl px-2 py-1.5 text-sm font-medium text-emerald-600 focus:ring-2 focus:ring-emerald-500 outline-none"
+                            className="bg-card border border-line rounded-xl px-2 py-1.5 text-sm font-medium text-brand focus:ring-2 focus:ring-brand outline-none"
                           />
                           <button 
                             onClick={() => {
@@ -1329,7 +1464,7 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
                               newResults[idx].times.splice(timeIdx, 1);
                               setResults(newResults);
                             }}
-                            className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center text-[10px] shadow-sm hover:bg-rose-600"
+                            className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-bad text-white rounded-full flex items-center justify-center text-[10px] shadow-sm hover:bg-bad"
                           >
                             ×
                           </button>
@@ -1344,7 +1479,7 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
                           newResults[idx].times.push(`${String(nextH).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
                           setResults(newResults);
                         }}
-                        className="w-10 h-8 border-2 border-dashed border-zinc-200 rounded-xl flex items-center justify-center text-zinc-400 hover:border-emerald-500 hover:text-emerald-500 transition-colors"
+                        className="w-10 h-8 border-2 border-dashed border-line rounded-xl flex items-center justify-center text-faint hover:border-brand hover:text-brand transition-colors"
                       >
                         <Plus className="w-4 h-4" />
                       </button>
@@ -1356,14 +1491,14 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
             <div className="flex gap-3">
               <button 
                 onClick={() => setView('camera')}
-                className="flex-1 py-4 bg-zinc-100 text-zinc-900 font-semibold rounded-2xl hover:bg-zinc-200 transition-colors"
+                className="flex-1 py-4 bg-canvas text-ink font-semibold rounded-2xl hover:bg-line transition-colors"
               >
                 Reintentar
               </button>
               <button 
                 onClick={saveReminders}
                 disabled={isSaving}
-                className="flex-[2] py-4 bg-emerald-600 text-white font-semibold rounded-2xl shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
+                className="flex-[2] py-4 bg-brand text-white font-semibold rounded-2xl shadow-lg shadow-brand-soft hover:bg-brand-strong transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
               >
                 {isSaving ? (
                   <>
@@ -1401,7 +1536,7 @@ const Splash = (_: { key?: string }) => (
     initial={{ opacity: 1 }}
     exit={{ opacity: 0, scale: 1.03 }}
     transition={{ duration: 0.4, ease: [0.2, 0.8, 0.2, 1] }}
-    className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-[#f3eee4] px-6 text-[#1f2a24]"
+    className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-canvas px-6 text-ink"
     aria-label="Cargando FotoFarma"
   >
     <motion.img
@@ -1410,13 +1545,13 @@ const Splash = (_: { key?: string }) => (
       initial={{ scale: 0.8, opacity: 0, y: 8 }}
       animate={{ scale: 1, opacity: 1, y: 0 }}
       transition={{ type: 'spring', stiffness: 260, damping: 22, delay: 0.05 }}
-      className="h-[clamp(88px,18vmin,144px)] w-[clamp(88px,18vmin,144px)] rounded-[26%] shadow-[0_18px_40px_-16px_rgba(16,185,129,0.55)]"
+      className="h-[clamp(88px,18vmin,144px)] w-[clamp(88px,18vmin,144px)] rounded-[26%] shadow-[0_18px_40px_-16px_rgb(62_102_214/0.6)]"
     />
     <motion.h1
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45, delay: 0.3, ease: [0.2, 0.8, 0.2, 1] }}
-      className="mt-[clamp(20px,4vmin,36px)] font-serif text-[clamp(2rem,6vmin,3.5rem)] font-semibold tracking-tight"
+      className="mt-[clamp(20px,4vmin,36px)] text-[clamp(2rem,6vmin,3.5rem)] font-bold tracking-tight"
     >
       FotoFarma
     </motion.h1>
@@ -1424,16 +1559,16 @@ const Splash = (_: { key?: string }) => (
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45, delay: 0.45, ease: [0.2, 0.8, 0.2, 1] }}
-      className="mt-2 text-[clamp(0.95rem,2.2vmin,1.2rem)] text-[#5b6b61]"
+      className="mt-2 text-[clamp(0.95rem,2.2vmin,1.2rem)] text-muted"
     >
       Tus medicinas, a su hora.
     </motion.p>
-    <div className="absolute bottom-[max(56px,calc(env(safe-area-inset-bottom)+40px))] h-[3px] w-[clamp(120px,22vmin,200px)] overflow-hidden rounded-full bg-[#1f2a24]/10">
+    <div className="absolute bottom-[max(56px,calc(env(safe-area-inset-bottom)+40px))] h-[3px] w-[clamp(120px,22vmin,200px)] overflow-hidden rounded-full bg-ink/10">
       <motion.div
         initial={{ scaleX: 0 }}
         animate={{ scaleX: 1 }}
         transition={{ duration: (SPLASH_MS - 300) / 1000, ease: [0.4, 0, 0.2, 1] }}
-        className="h-full origin-left rounded-full bg-[#2f5d46]"
+        className="h-full origin-left rounded-full bg-brand"
       />
     </div>
   </motion.div>
@@ -1451,12 +1586,23 @@ export default function App() {
 
   // Barra de estado del teléfono del mismo color que la pantalla visible
   useEffect(() => {
-    const color = showSplash || view === 'login' ? '#f3eee4' : view === 'camera' || view === 'preview' ? '#000000' : '#fafafa';
+    const color = view === 'camera' || view === 'preview' ? '#000000' : '#f3f6fd';
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', color);
   }, [showSplash, view]);
   const [user, setUser] = useState<any>(null);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [confirmBorrar, setConfirmBorrar] = useState<'reminders' | 'prescriptions' | null>(null);
+
+  const borrarTodo = async (col: 'reminders' | 'prescriptions') => {
+    if (!auth.currentUser) return;
+    try {
+      const snapshot = await getDocs(query(collection(db, col), where('uid', '==', auth.currentUser.uid)));
+      await Promise.all(snapshot.docs.map(d => deleteDoc(d.ref)));
+    } catch (error) {
+      handleFirestoreError(error, 'delete', `${col}/all`);
+    }
+  };
   const [capturedImage, setCapturedImage] = useState<string>('');
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
   const [remindersToday, setRemindersToday] = useState<Medication[]>([]);
@@ -1709,7 +1855,7 @@ export default function App() {
           particleCount: 100,
           spread: 70,
           origin: { y: 0.6 },
-          colors: ['#10b981', '#34d399', '#6ee7b7']
+          colors: ['#5b86f0', '#8a79f0', '#3fc49b', '#f4a53d']
         });
       }
       return;
@@ -1717,7 +1863,8 @@ export default function App() {
 
     try {
       await updateDoc(doc(db, 'reminders', med.id), {
-        completed: !med.completed
+        completed: !med.completed,
+        completedAt: !med.completed ? Date.now() : null
       });
       
       if (!med.completed) {
@@ -1725,7 +1872,7 @@ export default function App() {
           particleCount: 100,
           spread: 70,
           origin: { y: 0.6 },
-          colors: ['#10b981', '#34d399', '#6ee7b7']
+          colors: ['#5b86f0', '#8a79f0', '#3fc49b', '#f4a53d']
         });
       }
     } catch (error) {
@@ -1762,7 +1909,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-dvh bg-zinc-50 font-sans text-zinc-900 selection:bg-emerald-100 selection:text-emerald-900">
+    <div className="min-h-dvh bg-canvas font-sans text-ink selection:bg-brand-soft selection:text-brand-strong">
       <AnimatePresence>
         {showSplash && <Splash key="splash" />}
       </AnimatePresence>
@@ -1793,6 +1940,7 @@ export default function App() {
             installPrompt={installPrompt}
             onInstall={handleInstall}
             onToggle={toggleComplete}
+            userName={userSettings?.name}
           />
         )}
         {view === 'camera' && <CameraView key="camera" setView={setView} setCapturedImage={setCapturedImage} />}
@@ -1801,95 +1949,114 @@ export default function App() {
         {view === 'preview' && <PreviewView key="preview" setView={setView} capturedImage={capturedImage} userSettings={userSettings} />}
       </AnimatePresence>
 
-      {/* Settings Modal */}
+      {/* Ajustes */}
       <AnimatePresence>
         {showSettings && (
-          <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/60 backdrop-blur-sm md:items-center md:p-6" onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}>
-            <motion.div 
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: 'spring', stiffness: 380, damping: 36 }}
-              className="bg-white w-full max-w-lg rounded-t-[40px] md:rounded-[40px] p-8 pb-[max(32px,env(safe-area-inset-bottom))] shadow-2xl"
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] flex items-end justify-center bg-ink/40 backdrop-blur-sm md:items-center md:p-6"
+            onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}
+          >
+            <motion.div
+              initial={{ y: 60, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 60, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 380, damping: 34 }}
+              className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-[32px] bg-card p-6 pb-[max(24px,env(safe-area-inset-bottom))] shadow-2xl md:rounded-[32px] md:p-8"
             >
-              <div className="flex items-center justify-between mb-8">
-                <h3 className="text-2xl font-black text-zinc-900">Ajustes de Horario</h3>
-                <button onClick={() => setShowSettings(false)} className="w-10 h-10 bg-zinc-100 rounded-full flex items-center justify-center">
-                  <X className="w-6 h-6" />
+              <div className="mb-6 flex items-center justify-between">
+                <h3 className="text-2xl font-semibold text-ink">Ajustes</h3>
+                <button onClick={() => setShowSettings(false)} aria-label="Cerrar" className="flex h-10 w-10 items-center justify-center rounded-full bg-canvas text-muted hover:text-ink">
+                  <X className="h-5 w-5" />
                 </button>
               </div>
 
-              <div className="space-y-6 mb-8">
-                <div className="p-4 bg-emerald-50 rounded-3xl border border-emerald-100">
-                  <p className="text-sm font-bold text-emerald-800 mb-2 flex items-center gap-2">
-                    <Bell className="w-4 h-4" /> 
-                    ¿A qué hora empieza tu día?
-                  </p>
-                  <p className="text-xs text-emerald-600 mb-4">
-                    Usaremos esta hora como base para programar tus medicamentos. Por ejemplo, si los tomas cada 8 horas, la primera dosis será a esta hora.
-                  </p>
-                  <input 
-                    type="time" 
+              <div className="space-y-4">
+                <label className="block rounded-3xl bg-canvas p-5">
+                  <span className="mb-2 block text-sm font-medium text-muted">¿Cómo te llamas?</span>
+                  <input
+                    value={userSettings?.name || ''}
+                    placeholder="Tu nombre"
+                    maxLength={30}
+                    onChange={async (e) => {
+                      if (!user) return;
+                      await updateDoc(doc(db, 'user_settings', user.uid), { name: e.target.value, updatedAt: serverTimestamp() });
+                    }}
+                    className="w-full rounded-2xl border border-line bg-card px-4 py-3.5 text-lg text-ink outline-none placeholder:text-faint focus:border-brand"
+                  />
+                </label>
+
+                <label className="block rounded-3xl bg-brand-soft p-5">
+                  <span className="mb-1 flex items-center gap-2 font-semibold text-ink">
+                    <Clock3 className="h-4 w-4 text-brand" /> ¿A qué hora empieza tu día?
+                  </span>
+                  <span className="mb-4 block text-sm text-muted">
+                    Es la base para programar tus medicinas: si tomas algo cada 8 horas, la primera toma será a esta hora.
+                  </span>
+                  <input
+                    type="time"
                     value={userSettings?.dayStartTime || '08:00'}
                     onChange={async (e) => {
                       if (!user) return;
-                      const newTime = e.target.value;
-                      await updateDoc(doc(db, 'user_settings', user.uid), {
-                        dayStartTime: newTime,
-                        updatedAt: serverTimestamp()
-                      });
+                      await updateDoc(doc(db, 'user_settings', user.uid), { dayStartTime: e.target.value, updatedAt: serverTimestamp() });
                     }}
-                    className="w-full py-4 px-6 bg-white border border-emerald-200 rounded-2xl text-2xl font-black text-center text-emerald-600 focus:ring-4 focus:ring-emerald-500/20 outline-none transition-all"
+                    className="w-full rounded-2xl border border-brand-tint bg-card px-6 py-4 text-center text-2xl font-semibold tabular-nums text-brand-strong outline-none focus:border-brand"
                   />
-                </div>
+                </label>
 
-                <div className="p-4 bg-zinc-50 rounded-3xl border border-zinc-100">
-                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">Tus Preferencias</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-zinc-700">Términos y Condiciones</span>
-                    <span className="text-xs font-bold text-emerald-600 bg-emerald-100 px-2 py-1 rounded-lg">Aceptados</span>
+                <div className="rounded-3xl border border-line p-5">
+                  <p className="mb-3 text-sm font-medium text-muted">Borrar datos de este dispositivo</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <button onClick={() => setConfirmBorrar('reminders')} className="flex items-center justify-center gap-2 rounded-2xl bg-bad-soft px-4 py-3 text-sm font-semibold text-bad hover:bg-[#fbdde1]">
+                      <Trash2 className="h-4 w-4" /> Recordatorios
+                    </button>
+                    <button onClick={() => setConfirmBorrar('prescriptions')} className="flex items-center justify-center gap-2 rounded-2xl bg-bad-soft px-4 py-3 text-sm font-semibold text-bad hover:bg-[#fbdde1]">
+                      <Trash2 className="h-4 w-4" /> Recetas guardadas
+                    </button>
                   </div>
                 </div>
               </div>
 
-              <button 
-                onClick={() => setShowSettings(false)}
-                className="w-full py-5 bg-zinc-900 text-white font-bold rounded-2xl shadow-xl transition-all"
-              >
-                Guardar y Cerrar
+              <button onClick={() => setShowSettings(false)} className="mt-6 w-full rounded-2xl bg-ink py-4 font-semibold text-white hover:bg-[#2a355a]">
+                Listo
               </button>
             </motion.div>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
-      
-      {/* Persist bottom navigation on dashboard/calendar/gallery */}
+
+      <ConfirmModal
+        isOpen={confirmBorrar !== null}
+        onClose={() => setConfirmBorrar(null)}
+        onConfirm={() => confirmBorrar && borrarTodo(confirmBorrar)}
+        title={confirmBorrar === 'prescriptions' ? '¿Borrar todas las recetas?' : '¿Borrar todos los recordatorios?'}
+        message="Se eliminan de este dispositivo y no se pueden recuperar."
+      />
+
+      {/* Barra flotante (boceto) */}
       {view !== 'login' && view !== 'camera' && view !== 'preview' && (
-        <nav className="fixed inset-x-0 bottom-0 z-40 h-[var(--nav-h)] border-t border-zinc-200/80 bg-white/85 pb-[env(safe-area-inset-bottom)] backdrop-blur-lg">
-          <div className="mx-auto flex h-full max-w-md items-center justify-around px-4 md:max-w-lg">
+        <nav className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-[max(14px,env(safe-area-inset-bottom))]">
+          <div className="pointer-events-auto flex w-[min(340px,100%)] items-center justify-between rounded-full bg-card/90 p-2 shadow-[0_12px_32px_-12px_rgb(28_38_69/0.28)] ring-1 ring-line backdrop-blur-xl">
             {([
               { v: 'dashboard', label: 'Inicio', Icon: Home },
-              { v: 'camera', label: 'Escanear', Icon: Camera },
-              { v: 'calendar', label: 'Calendario', Icon: CalendarIcon },
-            ] as const).map(({ v, label, Icon }) => v === 'camera' ? (
-              <button
-                key={v}
-                onClick={() => setView('camera')}
-                aria-label={label}
-                className="-mt-8 flex h-[clamp(56px,7vmin,68px)] w-[clamp(56px,7vmin,68px)] items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-lg shadow-emerald-600/25 hover:bg-emerald-700"
-              >
-                <Camera className="h-1/2 w-1/2" />
-              </button>
-            ) : (
+              { v: 'gallery', label: 'Mis recetas', Icon: ImageIcon },
+              { v: 'calendar', label: 'Calendario', Icon: History },
+            ] as const).map(({ v, label, Icon }) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
-                className={`relative flex flex-col items-center gap-1 rounded-xl px-4 py-1.5 transition-colors ${view === v ? 'text-emerald-700' : 'text-zinc-400 hover:text-zinc-700'}`}
+                aria-label={label}
+                title={label}
+                className={`relative flex h-[clamp(48px,6vmin,56px)] w-[clamp(48px,6vmin,56px)] items-center justify-center rounded-full ${view === v ? 'text-brand' : 'text-faint hover:text-ink'}`}
               >
-                <Icon className="h-6 w-6" />
-                <span className="text-[11px] font-semibold">{label}</span>
                 {view === v && (
-                  <motion.span layoutId="nav-dot" className="absolute -bottom-1 h-1 w-1 rounded-full bg-emerald-600" transition={{ type: 'spring', stiffness: 500, damping: 35 }} />
+                  <motion.span layoutId="nav-bg" className="absolute inset-0 rounded-full bg-brand-soft" transition={{ type: 'spring', stiffness: 500, damping: 38 }} />
+                )}
+                <Icon className="relative h-6 w-6" strokeWidth={2.2} />
+                {view === v && (
+                  <motion.span layoutId="nav-dot" className="absolute bottom-1.5 h-1 w-1 rounded-full bg-brand" transition={{ type: 'spring', stiffness: 500, damping: 38 }} />
                 )}
               </button>
             ))}
