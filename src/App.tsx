@@ -140,6 +140,10 @@ const performSecurityAudit = async (newMeds: any[], historyMeds: any[]) => {
 };
 
 // --- Helpers ---
+// Safari de iPhone solo expone Notification en la app instalada (iOS 16.4+); sin esta guarda la app se cae
+const avisosDisponibles = () => typeof window !== 'undefined' && 'Notification' in window;
+const permisoAvisos = (): NotificationPermission => (avisosDisponibles() ? Notification.permission : 'denied');
+
 const getLocalDateString = (date: Date): string => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -2284,7 +2288,7 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    if (user && Notification.permission === 'granted') {
+    if (user && permisoAvisos() === 'granted') {
       subscribeUserToPush(user.uid);
     }
   }, [user]);
@@ -2296,8 +2300,11 @@ export default function App() {
   }, []);
 
   const requestPermission = async () => {
-    if (!('Notification' in window)) {
-      alert("Tu navegador no soporta notificaciones.");
+    if (!avisosDisponibles()) {
+      const iPhone = /iPhone|iPad|iPod/.test(navigator.userAgent);
+      alert(iPhone
+        ? "En iPhone los avisos solo funcionan con la app instalada: toca Compartir → «Agregar a inicio» y ábrela desde el ícono."
+        : "Tu navegador no permite notificaciones.");
       return;
     }
     
@@ -2314,10 +2321,14 @@ export default function App() {
       if (permission === 'denied') {
         alert("Has bloqueado las notificaciones. Por favor, actívalas en los ajustes de tu navegador para recibir alertas.");
       } else if (permission === 'granted') {
-        new Notification("¡Notificaciones activadas!", {
-          body: "Te avisaremos cuando sea hora de tu medicina.",
-          icon: `${import.meta.env.BASE_URL}logo.svg`
-        });
+        const aviso = { body: "Te avisaremos cuando sea hora de tu medicina.", icon: `${import.meta.env.BASE_URL}logo.svg` };
+        try {
+          // En iPhone (app instalada) solo funcionan los avisos del service worker
+          if ('serviceWorker' in navigator) (await navigator.serviceWorker.ready).showNotification("¡Notificaciones activadas!", aviso);
+          else new Notification("¡Notificaciones activadas!", aviso);
+        } catch (err) {
+          console.error('No se pudo mostrar el aviso de prueba:', err);
+        }
         
         // Iniciamos suscripción persistente al servidor
         if (user) {
@@ -2450,7 +2461,7 @@ export default function App() {
           if ('serviceWorker' in navigator) {
             const registration = await navigator.serviceWorker.ready;
             registration.showNotification(title, options);
-          } else {
+          } else if (avisosDisponibles()) {
             new Notification(title, options);
           }
         });
@@ -2539,7 +2550,7 @@ export default function App() {
       icon: `${import.meta.env.BASE_URL}logo.svg`,
       tag: 'test-notification'
     };
-    if ('serviceWorker' in navigator && Notification.permission === 'granted') {
+    if ('serviceWorker' in navigator && permisoAvisos() === 'granted') {
       const reg = await navigator.serviceWorker.ready;
       reg.showNotification(title, options);
     }
