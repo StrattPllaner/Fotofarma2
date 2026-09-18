@@ -55,7 +55,7 @@ import {
 } from './localdb';
 
 // --- Types ---
-type View = 'login' | 'dashboard' | 'camera' | 'calendar' | 'gallery' | 'preview' | 'receta' | 'perfil';
+type View = 'login' | 'dashboard' | 'camera' | 'calendar' | 'preview' | 'perfil';
 
 interface Medication {
   id?: string;
@@ -518,14 +518,6 @@ const DashboardView = ({ setView, reminders, onToggle, userName }: DashboardProp
               <CalendarDays className="h-[clamp(30px,5vmin,40px)] w-[clamp(30px,5vmin,40px)] text-brand" strokeWidth={1.8} />
               <span className="text-[clamp(0.95rem,2vmin,1.1rem)] font-semibold">Mis tomas</span>
             </button>
-            <button
-              onClick={() => setView('gallery')}
-              className="tile col-span-2 flex items-center gap-4 rounded-[24px] bg-card px-5 py-4 text-left shadow-soft"
-            >
-              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-lav-soft text-lav"><FileText className="h-5 w-5" /></span>
-              <span className="flex-1 font-semibold text-ink">Mis recetas</span>
-              <ChevronRight className="h-5 w-5 text-faint" />
-            </button>
           </div>
 
           <div className="wide:hidden">
@@ -554,169 +546,6 @@ const DashboardView = ({ setView, reminders, onToggle, userName }: DashboardProp
           </div>
         </section>
       </div>
-    </motion.div>
-  );
-};
-
-interface GalleryViewProps {
-  setView: (v: View) => void;
-  onOpen: (id: string) => void;
-  key?: string;
-}
-
-const GalleryView = ({ setView, onOpen }: GalleryViewProps) => {
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!auth.currentUser) return;
-    const q = query(
-      collection(db, 'prescriptions'),
-      where('uid', '==', auth.currentUser.uid),
-      orderBy('scannedAt', 'desc')
-    );
-    return onSnapshot(q, (snapshot) => {
-      setPrescriptions(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Prescription)));
-      setLoading(false);
-    }, (error) => handleFirestoreError(error, 'list', 'prescriptions'));
-  }, []);
-
-  return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="min-h-dvh bg-canvas pb-[calc(var(--nav-h)+28px)]">
-      <Banda
-        title="Mis recetas"
-        center
-        left={<BandaBoton onClick={() => setView('dashboard')} label="Volver"><ChevronLeft className="h-6 w-6" /></BandaBoton>}
-        right={<BandaBoton onClick={() => setView('camera')} label="Escanear receta"><Plus className="h-6 w-6" /></BandaBoton>}
-      />
-      <div className={`relative mx-auto max-w-5xl ${PAD_X} ${SOLAPE}`}>
-        {loading ? (
-          <div className="flex justify-center rounded-[28px] bg-card p-12 shadow-soft"><Loader2 className="h-8 w-8 animate-spin text-brand" /></div>
-        ) : prescriptions.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 rounded-[28px] bg-card p-12 text-center shadow-soft">
-            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-lav-soft text-lav"><FileText className="h-7 w-7" /></span>
-            <p className="font-semibold text-ink">Aún no has escaneado recetas</p>
-            <button onClick={() => setView('camera')} className="rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-strong">Escanear receta</button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-[clamp(12px,2vmin,20px)] sm:grid-cols-3 lg:grid-cols-4">
-            {prescriptions.map((p, i) => (
-              <motion.button
-                key={p.id}
-                onClick={() => onOpen(p.id)}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: Math.min(i, 10) * 0.03, ease: [0.2, 0.8, 0.2, 1] }}
-                className="tile overflow-hidden rounded-[22px] bg-card text-left shadow-soft"
-              >
-                <span className="block aspect-[4/3] bg-brand-soft">
-                  {p.imageUrl
-                    ? <img src={p.imageUrl} alt="Receta" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-                    : <span className="flex h-full items-center justify-center text-brand"><FileText className="h-9 w-9" /></span>}
-                </span>
-                <span className="block px-4 py-3">
-                  <span className="block truncate font-semibold text-ink">{p.medications?.length || 0} medicamentos</span>
-                  <span className="block text-sm text-muted">{new Date(p.scannedAt?.toDate?.() || p.scannedAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                </span>
-              </motion.button>
-            ))}
-          </div>
-        )}
-      </div>
-    </motion.div>
-  );
-};
-
-const RecetaView = ({ id, setView }: { id: string | null; setView: (v: View) => void; key?: string }) => {
-  const [receta, setReceta] = useState<Prescription | null | undefined>(undefined);
-  const [confirmar, setConfirmar] = useState(false);
-
-  useEffect(() => {
-    if (!id) { setReceta(null); return; }
-    return onSnapshot(doc(db, 'prescriptions', id), (snap) => {
-      setReceta(snap.exists() ? ({ id: snap.id, ...snap.data() } as Prescription) : null);
-    });
-  }, [id]);
-
-  const eliminar = async () => {
-    if (!id || !auth.currentUser) return;
-    try {
-      const tomas = await getDocs(query(collection(db, 'reminders'), where('uid', '==', auth.currentUser.uid), where('prescriptionId', '==', id)));
-      await Promise.all(tomas.docs.map(d => deleteDoc(d.ref)));
-      await deleteDoc(doc(db, 'prescriptions', id));
-      setView('gallery');
-    } catch (error) {
-      handleFirestoreError(error, 'delete', `prescriptions/${id}`);
-    }
-  };
-
-  const meds: any[] = receta?.medications || [];
-
-  return (
-    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.25, ease: [0.2, 0.8, 0.2, 1] }} className="min-h-dvh bg-canvas pb-[calc(var(--nav-h)+28px)]">
-      <Banda
-        title="Detalle de receta"
-        center
-        left={<BandaBoton onClick={() => setView('gallery')} label="Volver"><ChevronLeft className="h-6 w-6" /></BandaBoton>}
-        right={<LogoTile />}
-      />
-      <div className={`relative mx-auto max-w-5xl ${PAD_X} ${SOLAPE}`}>
-        {receta === undefined ? (
-          <div className="flex justify-center rounded-[28px] bg-card p-12 shadow-soft"><Loader2 className="h-8 w-8 animate-spin text-brand" /></div>
-        ) : receta === null ? (
-          <div className="rounded-[28px] bg-card p-12 text-center text-muted shadow-soft">Esta receta ya no existe.</div>
-        ) : (
-          <div className="grid gap-6 wide:grid-cols-[1fr_1.1fr] wide:items-start">
-            <section className="rounded-[28px] bg-card p-4 shadow-soft">
-              <div className="aspect-[4/3] overflow-hidden rounded-[20px] bg-brand-soft">
-                {receta.imageUrl
-                  ? <img src={receta.imageUrl} alt="Foto de la receta" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-                  : <span className="flex h-full items-center justify-center text-brand"><FileText className="h-12 w-12" /></span>}
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-2 px-2 pt-4 pb-1">
-                <div>
-                  <p className="font-semibold text-ink">Receta escaneada</p>
-                  <p className="text-sm text-muted">{new Date(receta.scannedAt?.toDate?.() || receta.scannedAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-                </div>
-                <span className="flex items-center gap-1.5 rounded-full bg-mint-soft px-3 py-1 text-sm font-semibold text-mint-strong">
-                  <Check className="h-4 w-4" /> En tu calendario
-                </span>
-              </div>
-            </section>
-
-            <section className="wide:pt-[clamp(44px,7vh,64px)]">
-              <SeccionTitulo>Medicamentos</SeccionTitulo>
-              <ul className="overflow-hidden rounded-[24px] bg-card shadow-soft">
-                {meds.length === 0 && <li className="p-6 text-center text-sm text-muted">Sin medicamentos</li>}
-                {meds.map((m, i) => (
-                  <li key={i} className="flex items-center gap-4 border-b border-line px-5 py-4 last:border-0">
-                    <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${toneFor(m.name || '').tile}`}><Pill className="h-5 w-5" /></span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-semibold text-ink">{m.name}</span>
-                      <span className="block truncate text-sm text-muted">{[m.dosage, m.frequency].filter(Boolean).join(' · ')}</span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-6 space-y-3">
-                <button onClick={() => setView('calendar')} className="w-full rounded-2xl bg-brand py-4 font-semibold text-white shadow-[0_16px_30px_-16px_rgb(62_102_214/0.9)] hover:bg-brand-strong">
-                  Ver en el calendario
-                </button>
-                <button onClick={() => setConfirmar(true)} className="w-full rounded-2xl py-3 text-sm font-semibold text-bad hover:bg-bad-soft">
-                  Eliminar receta
-                </button>
-              </div>
-            </section>
-          </div>
-        )}
-      </div>
-      <ConfirmModal
-        isOpen={confirmar}
-        onClose={() => setConfirmar(false)}
-        onConfirm={eliminar}
-        title="¿Eliminar esta receta?"
-        message="También se quitan sus tomas del calendario."
-      />
     </motion.div>
   );
 };
@@ -800,15 +629,10 @@ const PerfilView = ({ userSettings, onUpdate, notificationPermission, requestPer
         {hoja === 'aviso' && <AvisoLegal key="aviso" onClose={() => setHoja(null)} />}
         {hoja === 'borrar' && (
           <Hoja key="borrar" title="Borrar mis datos" onClose={() => setHoja(null)}>
-            <p className="mb-5 text-sm text-muted">Se eliminan de este dispositivo y no se pueden recuperar.</p>
-            <div className="space-y-2">
-              <button onClick={() => { onBorrar('reminders'); setHoja(null); }} className="flex w-full items-center gap-3 rounded-2xl bg-bad-soft px-4 py-3.5 font-semibold text-bad hover:bg-[#fbdde1]">
-                <Trash2 className="h-5 w-5" /> Borrar recordatorios
-              </button>
-              <button onClick={() => { onBorrar('prescriptions'); setHoja(null); }} className="flex w-full items-center gap-3 rounded-2xl bg-bad-soft px-4 py-3.5 font-semibold text-bad hover:bg-[#fbdde1]">
-                <Trash2 className="h-5 w-5" /> Borrar recetas guardadas
-              </button>
-            </div>
+            <p className="mb-5 text-sm text-muted">Se eliminan todas las tomas guardadas en este dispositivo. No se pueden recuperar.</p>
+            <button onClick={() => { onBorrar('reminders'); onBorrar('prescriptions'); setHoja(null); }} className="flex w-full items-center justify-center gap-3 rounded-2xl bg-bad-soft px-4 py-3.5 font-semibold text-bad hover:bg-[#fbdde1]">
+              <Trash2 className="h-5 w-5" /> Borrar todo
+            </button>
           </Hoja>
         )}
       </AnimatePresence>
@@ -1057,12 +881,7 @@ const CameraView = ({ setView, setCapturedImage }: { setView: (v: View) => void,
 
       <div className="absolute bottom-0 left-0 right-0 px-8 pt-8 pb-[max(32px,env(safe-area-inset-bottom))] bg-gradient-to-t from-black/60 to-transparent">
       <div className="mx-auto max-w-md flex items-center justify-between">
-        <button 
-          onClick={() => setView('gallery')}
-          className="w-14 h-14 bg-card/20 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-card/30 transition-all"
-        >
-          <ImageIcon className="w-7 h-7" />
-        </button>
+        <span className="w-14 h-14" aria-hidden="true" />
 
         <button 
           onClick={takePhoto}
@@ -1383,15 +1202,6 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
     try {
       const batch = writeBatch(db);
 
-      // Save prescription
-      const pRef = doc(collection(db, 'prescriptions'));
-      batch.set(pRef, {
-        uid: auth.currentUser.uid,
-        imageUrl: capturedImage,
-        scannedAt: serverTimestamp(),
-        medications: results
-      });
-
       // Generate reminders
       const today = new Date();
       
@@ -1432,7 +1242,6 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
               endDate: endDateStr,
               comments: med.comments || '',
               completed: false,
-              prescriptionId: pRef.id
             });
           }
         }
@@ -1441,7 +1250,7 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
       await batch.commit();
       setView('calendar');
     } catch (error) {
-      handleFirestoreError(error, 'write', 'prescriptions/reminders');
+      handleFirestoreError(error, 'write', 'reminders');
     } finally {
       setIsSaving(false);
     }
@@ -1755,8 +1564,6 @@ export default function App() {
   const [user, setUser] = useState<any>(null);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [recetaId, setRecetaId] = useState<string | null>(null);
-
   const actualizarAjustes = (data: Partial<UserSettings>) => {
     if (!user) return;
     updateDoc(doc(db, 'user_settings', user.uid), { ...data, updatedAt: serverTimestamp() })
@@ -2114,8 +1921,6 @@ export default function App() {
         )}
         {view === 'camera' && <CameraView key="camera" setView={setView} setCapturedImage={setCapturedImage} />}
         {view === 'calendar' && <CalendarView key="calendar" setView={setView} requestPermission={requestPermission} notificationPermission={notificationPermission} toggleComplete={toggleComplete} />}
-        {view === 'gallery' && <GalleryView key="gallery" setView={setView} onOpen={(id) => { setRecetaId(id); setView('receta'); }} />}
-        {view === 'receta' && <RecetaView key="receta" id={recetaId} setView={setView} />}
         {view === 'perfil' && (
           <PerfilView
             key="perfil"
@@ -2135,10 +1940,9 @@ export default function App() {
       {/* Barra inferior con 4 pestañas */}
       {view !== 'login' && view !== 'camera' && view !== 'preview' && (
         <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl">
-          <div className="mx-auto grid h-[var(--nav-bar)] max-w-xl grid-cols-4">
+          <div className="mx-auto grid h-[var(--nav-bar)] max-w-md grid-cols-3">
             {([
               { v: 'dashboard', label: 'Inicio', Icon: Home, activo: ['dashboard'] },
-              { v: 'gallery', label: 'Recetas', Icon: FileText, activo: ['gallery', 'receta'] },
               { v: 'calendar', label: 'Tomas', Icon: CalendarDays, activo: ['calendar'] },
               { v: 'perfil', label: 'Perfil', Icon: User, activo: ['perfil'] },
             ] as const).map(({ v, label, Icon, activo }) => {
