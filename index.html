@@ -14,8 +14,21 @@
     <link rel="icon" type="image/svg+xml" href="logo.svg" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
     <style>html,body{background:#f3f6fd}</style>
-    <script type="module" crossorigin src="/Fotofarma2/assets/index-CircNvQL.js"></script>
-    <link rel="stylesheet" crossorigin href="/Fotofarma2/assets/index-D1fDcMLh.css">
+    <script>
+      // Si el teléfono guardó una versión vieja de esta página y sus archivos ya no existen,
+      // recargar una vez sin caché en vez de quedarse en blanco.
+      window.addEventListener('error', function (e) {
+        var t = e.target;
+        if (!t || !(t.tagName === 'SCRIPT' || t.tagName === 'LINK')) return;
+        try {
+          if (sessionStorage.getItem('ff-recarga')) return;
+          sessionStorage.setItem('ff-recarga', '1');
+        } catch (_) { return; }
+        location.replace(location.pathname + '?v=' + Date.now());
+      }, true);
+    </script>
+    <script type="module" crossorigin src="/Fotofarma2/assets/index-C3AhEAJs.js"></script>
+    <link rel="stylesheet" crossorigin href="/Fotofarma2/assets/index-BfLJ2YLV.css">
   </head>
   <body>
     <div id="root"></div>
