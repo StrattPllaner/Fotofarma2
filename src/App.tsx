@@ -113,11 +113,19 @@ const getGeminiClient = () => {
   return new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 };
 
+// Con esta llave, generateContent (sin streaming) responde 404; streamGenerateContent sí funciona.
+// Por eso pedimos la respuesta en streaming y juntamos los pedazos de texto.
+const generarTexto = async (params: Parameters<GoogleGenAI['models']['generateContent']>[0]) => {
+  const stream = await getGeminiClient().models.generateContentStream(params);
+  let texto = '';
+  for await (const chunk of stream) texto += chunk.text ?? '';
+  return texto;
+};
+
 const analyzePrescription = async (base64Image: string) => {
-  const client = getGeminiClient();
   const prompt = "Analiza esta receta médica y extrae una lista de medicamentos. Para cada medicamento, identifica el nombre comercial o genérico, la dosis (ej. 500mg), la frecuencia (ej. cada 8 horas), la duración del tratamiento (ej. 7 días, o 'indefinido') y cualquier comentario o nota adicional del médico (ej. 'tomar después de comer'). Devuelve los resultados estrictamente en formato JSON según el esquema proporcionado.";
 
-  const response = await client.models.generateContent({
+  const text = await generarTexto({
     model: GEMINI_MODEL,
     contents: [
       {
@@ -147,13 +155,11 @@ const analyzePrescription = async (base64Image: string) => {
     },
   });
 
-  const text = response.text;
   if (!text) throw new Error("La IA no devolvió una respuesta legible. Intenta con una foto más clara.");
   return JSON.parse(text);
 };
 
 const performSecurityAudit = async (newMeds: any[], historyMeds: any[]) => {
-  const client = getGeminiClient();
   const prompt = `Actúa como un experto en farmacología clínica y seguridad del paciente.
 Analiza la interacción entre los NUEVOS medicamentos de una receta y el HISTORIAL médico del paciente.
 
@@ -174,13 +180,13 @@ Devuelve un JSON estrictamente con este esquema:
   "recommendations": string[]
 }`;
 
-  const response = await client.models.generateContent({
+  const text = await generarTexto({
     model: GEMINI_MODEL,
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     config: { responseMimeType: "application/json" },
   });
 
-  return JSON.parse(response.text || "{}");
+  return JSON.parse(text || "{}");
 };
 
 // --- Helpers ---
