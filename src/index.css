@@ -122,19 +122,8 @@ button:focus-visible {
 .flash-l { --dx: -4px; animation: flash 2.4s ease-in-out infinite; transform-box: fill-box; }
 .flash-r { --dx: 4px; animation: flash 2.4s ease-in-out infinite; transform-box: fill-box; }
 
-/* Banda azul: manchas que flotan lento, tipo lámpara de lava */
-.lava {
-  position: absolute;
-  border-radius: 9999px;
-  filter: blur(34px);
-  pointer-events: none;
-  will-change: transform;
-}
-@keyframes lava-a { 0%, 100% { transform: translate3d(0, 0, 0) scale(1); } 50% { transform: translate3d(-42%, 48%, 0) scale(1.35); } }
-@keyframes lava-b { 0%, 100% { transform: translate3d(0, 0, 0) scale(1.15); } 50% { transform: translate3d(52%, -40%, 0) scale(0.8); } }
-@keyframes lava-c { 0%, 100% { transform: translate3d(0, 0, 0) scale(0.85); } 50% { transform: translate3d(60%, 44%, 0) scale(1.3); } }
-@keyframes lava-d { 0%, 100% { transform: translate3d(0, 0, 0) scale(1.2); } 50% { transform: translate3d(-58%, -34%, 0) scale(0.85); } }
-.lava-1 { top: -20%; right: -6%; width: 18rem; height: 18rem; background: rgb(255 255 255 / 0.3); animation: lava-a 18s ease-in-out infinite; }
-.lava-2 { bottom: -40%; left: 14%; width: 16rem; height: 16rem; background: var(--color-brand-strong); opacity: 0.5; animation: lava-b 23s ease-in-out infinite; }
-.lava-3 { top: -26%; left: -8%; width: 14rem; height: 14rem; background: var(--color-lav); opacity: 0.45; animation: lava-c 20s ease-in-out infinite; }
-.lava-4 { bottom: -34%; right: 26%; width: 12rem; height: 12rem; background: rgb(255 255 255 / 0.22); animation: lava-d 26s ease-in-out infinite; }
+/* Banda azul: los dos circulos flotan lento, tipo lampara de lava */
+@keyframes lava-a { 0%, 100% { transform: translate3d(0, 0, 0) scale(1); } 33% { transform: translate3d(-26%, 34%, 0) scale(1.22); } 66% { transform: translate3d(-8%, 14%, 0) scale(0.92); } }
+@keyframes lava-b { 0%, 100% { transform: translate3d(0, 0, 0) scale(1.08); } 33% { transform: translate3d(34%, -30%, 0) scale(0.84); } 66% { transform: translate3d(12%, -10%, 0) scale(1.18); } }
+.lava-1 { animation: lava-a 22s ease-in-out infinite; will-change: transform; }
+.lava-2 { animation: lava-b 28s ease-in-out infinite; will-change: transform; }
