@@ -404,8 +404,10 @@ const BandaBoton = ({ onClick, label, children }: { onClick: () => void; label: 
 // Encabezado azul de cada pantalla; el contenido que sigue se monta encima con SOLAPE
 const Banda = ({ title, left, right, center = false, children }: { title: ReactNode; left?: ReactNode; right?: ReactNode; center?: boolean; children?: ReactNode }) => (
   <div className="relative overflow-hidden bg-brand text-white">
-    <span className="pointer-events-none absolute -top-24 -right-20 h-64 w-64 rounded-full bg-white/10" />
-    <span className="pointer-events-none absolute -bottom-32 left-1/4 h-56 w-56 rounded-full bg-brand-strong/30" />
+    <span className="lava lava-1" aria-hidden="true" />
+    <span className="lava lava-2" aria-hidden="true" />
+    <span className="lava lava-3" aria-hidden="true" />
+    <span className="lava lava-4" aria-hidden="true" />
     <div className={`relative mx-auto max-w-5xl ${PAD_X} pt-[max(16px,env(safe-area-inset-top))] pb-[clamp(64px,10vh,92px)]`}>
       <div className="flex min-h-14 items-center gap-3">
         {left ?? (center && right ? <span className="w-11 shrink-0" aria-hidden="true" /> : null)}
