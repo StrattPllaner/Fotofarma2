@@ -125,5 +125,5 @@ button:focus-visible {
 /* Banda azul: los dos circulos flotan lento, tipo lampara de lava */
 @keyframes lava-a { 0%, 100% { transform: translate3d(0, 0, 0) scale(1); } 33% { transform: translate3d(-26%, 34%, 0) scale(1.22); } 66% { transform: translate3d(-8%, 14%, 0) scale(0.92); } }
 @keyframes lava-b { 0%, 100% { transform: translate3d(0, 0, 0) scale(1.08); } 33% { transform: translate3d(34%, -30%, 0) scale(0.84); } 66% { transform: translate3d(12%, -10%, 0) scale(1.18); } }
-.lava-1 { animation: lava-a 22s ease-in-out infinite; will-change: transform; }
-.lava-2 { animation: lava-b 28s ease-in-out infinite; will-change: transform; }
+.lava-1 { animation: lava-a 14s ease-in-out infinite; will-change: transform; }
+.lava-2 { animation: lava-b 18s ease-in-out infinite; will-change: transform; }
