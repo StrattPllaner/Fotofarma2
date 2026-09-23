@@ -39,8 +39,18 @@ import {
   LocateFixed,
   Store,
   Navigation,
-  Phone
+  Phone,
+  Droplets,
+  Footprints,
+  Dumbbell,
+  Salad,
+  HeartPulse,
+  Moon,
+  BookOpen,
+  Smile,
+  Flame
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import {
   auth,
   db,
@@ -84,6 +94,17 @@ interface UserSettings {
   name?: string;
   dayStartTime: string;
   acceptedTerms: boolean;
+}
+
+interface Habit {
+  id?: string;
+  uid: string;
+  name: string;
+  time: string;                   // '' = a cualquier hora del día
+  days: number[];                 // 0=domingo … 6=sábado; vacío = todos los días
+  icon: string;
+  done?: Record<string, boolean>; // fechas 'YYYY-MM-DD' ya cumplidas
+  createdAt?: number;
 }
 
 interface Prescription {
@@ -391,7 +412,7 @@ const SOLAPE = '-mt-[clamp(44px,7vh,64px)]'; // cuánto sube el contenido sobre 
 
 const LogoTile = () => (
   <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/95 shadow-sm">
-    <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" className="h-8 w-8 rounded-[10px]" />
+    <img src={`${import.meta.env.BASE_URL}marca.svg`} alt="FotoFarma" className="h-9 w-9" />
   </span>
 );
 
@@ -1253,7 +1274,7 @@ interface PerfilViewProps {
   onTestAlarm: () => void;
   installPrompt: any;
   onInstall: () => void;
-  onBorrar: (col: 'reminders' | 'prescriptions') => void;
+  onBorrar: (col: 'reminders' | 'prescriptions' | 'habits') => void;
   key?: string;
 }
 
@@ -1324,8 +1345,8 @@ const PerfilView = ({ userSettings, onUpdate, notificationPermission, requestPer
         {hoja === 'aviso' && <AvisoLegal key="aviso" onClose={() => setHoja(null)} />}
         {hoja === 'borrar' && (
           <Hoja key="borrar" title="Borrar mis datos" onClose={() => setHoja(null)}>
-            <p className="mb-5 text-sm text-muted">Se eliminan todas las tomas guardadas en este dispositivo. No se pueden recuperar.</p>
-            <button onClick={() => { onBorrar('reminders'); onBorrar('prescriptions'); setHoja(null); }} className="flex w-full items-center justify-center gap-3 rounded-2xl bg-bad-soft px-4 py-3.5 font-semibold text-bad hover:bg-[#fbdde1]">
+            <p className="mb-5 text-sm text-muted">Se eliminan todas las tomas, recetas y hábitos guardados en este dispositivo. No se pueden recuperar.</p>
+            <button onClick={() => { onBorrar('reminders'); onBorrar('prescriptions'); onBorrar('habits'); setHoja(null); }} className="flex w-full items-center justify-center gap-3 rounded-2xl bg-bad-soft px-4 py-3.5 font-semibold text-bad hover:bg-[#fbdde1]">
               <Trash2 className="h-5 w-5" /> Borrar todo
             </button>
           </Hoja>
@@ -1686,6 +1707,317 @@ const MedSheet = ({ draft, date, onClose }: { draft: Draft; date: string; onClos
   );
 };
 
+// --- Hábitos (rutinas que se palomean día con día en el calendario) ---
+const HABIT_ICONS: { key: string; Icon: LucideIcon }[] = [
+  { key: 'agua', Icon: Droplets },
+  { key: 'caminar', Icon: Footprints },
+  { key: 'ejercicio', Icon: Dumbbell },
+  { key: 'comida', Icon: Salad },
+  { key: 'presion', Icon: HeartPulse },
+  { key: 'dormir', Icon: Moon },
+  { key: 'leer', Icon: BookOpen },
+  { key: 'animo', Icon: Smile },
+];
+
+const IconoHabito = ({ icon, className = '' }: { icon: string; className?: string }) => {
+  const { Icon } = HABIT_ICONS.find(h => h.key === icon) || HABIT_ICONS[0];
+  return <Icon className={className} />;
+};
+
+const DIAS_CORTOS = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
+const parseFecha = (fecha: string) => {
+  const [y, m, d] = fecha.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+
+// days vacío = todos los días
+const aplicaHabito = (h: { days?: number[] }, fecha: string) => !h.days?.length || h.days.includes(parseFecha(fecha).getDay());
+
+const textoDias = (days?: number[]) => {
+  if (!days?.length || days.length === 7) return 'Todos los días';
+  if (days.length === 5 && [1, 2, 3, 4, 5].every(d => days.includes(d))) return 'Entre semana';
+  if (days.length === 2 && days.includes(0) && days.includes(6)) return 'Fines de semana';
+  return [1, 2, 3, 4, 5, 6, 0].filter(d => days.includes(d)).map(d => DIAS_CORTOS[d]).join(' · ');
+};
+
+// Días seguidos cumplidos hasta esa fecha. El día en curso, si aún no se paloma, no rompe la racha.
+const rachaHabito = (h: Habit, hasta: string) => {
+  const d = parseFecha(hasta);
+  let racha = 0;
+  let primera = true;
+  for (let i = 0; i < 400; i++) {
+    const dia = getLocalDateString(d);
+    if (aplicaHabito(h, dia)) {
+      if (h.done?.[dia]) racha++;
+      else if (!primera) break;
+      primera = false;
+    }
+    d.setDate(d.getDate() - 1);
+  }
+  return racha;
+};
+
+const HABITOS_SUGERIDOS: { name: string; icon: string; time: string }[] = [
+  { name: 'Tomar agua', icon: 'agua', time: '' },
+  { name: 'Caminar 20 minutos', icon: 'caminar', time: '18:00' },
+  { name: 'Medir mi presión', icon: 'presion', time: '09:00' },
+  { name: 'Dormir 8 horas', icon: 'dormir', time: '22:30' },
+];
+
+type HabitDraft = { id?: string; name: string; time: string; days: number[]; icon: string };
+
+const HabitSheet = ({ draft, onClose }: { draft: HabitDraft; onClose: () => void; key?: string }) => {
+  const [form, setForm] = useState<HabitDraft>(draft);
+  const editing = !!draft.id;
+  const valid = form.name.trim() !== '' && (form.time === '' || /^\d{2}:\d{2}$/.test(form.time));
+
+  const alternarDia = (d: number) => {
+    const days = form.days.includes(d) ? form.days.filter(x => x !== d) : [...form.days, d].sort();
+    setForm({ ...form, days });
+  };
+
+  const save = async () => {
+    if (!valid || !auth.currentUser) return;
+    const data = { name: form.name.trim(), time: form.time, days: form.days, icon: form.icon };
+    try {
+      if (editing) await updateDoc(doc(db, 'habits', draft.id!), data);
+      else await addDoc(collection(db, 'habits'), { ...data, uid: auth.currentUser.uid, done: {}, createdAt: serverTimestamp() });
+      onClose();
+    } catch (error) {
+      handleFirestoreError(error, editing ? 'update' : 'create', 'habits');
+    }
+  };
+
+  const remove = async () => {
+    try {
+      await deleteDoc(doc(db, 'habits', draft.id!));
+      onClose();
+    } catch (error) {
+      handleFirestoreError(error, 'delete', `habits/${draft.id}`);
+    }
+  };
+
+  const field = 'w-full rounded-2xl border border-line bg-canvas px-4 py-3.5 text-base text-ink outline-none transition-colors placeholder:text-faint focus:border-brand focus:bg-card';
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[110] flex items-end justify-center bg-ink/40 backdrop-blur-sm md:items-center md:p-6"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <motion.form
+        initial={{ y: 40, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 40, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 380, damping: 34 }}
+        onSubmit={(e) => { e.preventDefault(); save(); }}
+        className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-t-[32px] bg-card p-6 pb-[max(24px,env(safe-area-inset-bottom))] shadow-2xl md:rounded-[32px] md:p-8"
+      >
+        <div className="mb-6 flex items-center justify-between">
+          <h3 className="text-2xl font-semibold text-ink">{editing ? 'Editar hábito' : 'Nuevo hábito'}</h3>
+          <button type="button" onClick={onClose} aria-label="Cerrar" className="flex h-10 w-10 items-center justify-center rounded-full bg-canvas text-muted hover:text-ink">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="space-y-5">
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-muted">Hábito</span>
+            <input autoFocus className={field} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Ej. Caminar 20 minutos" />
+          </label>
+
+          <div>
+            <span className="mb-1.5 block text-sm font-medium text-muted">Icono</span>
+            <div className="grid grid-cols-8 gap-2">
+              {HABIT_ICONS.map(({ key, Icon }) => (
+                <button
+                  key={key}
+                  type="button"
+                  aria-label={key}
+                  aria-pressed={form.icon === key}
+                  onClick={() => setForm({ ...form, icon: key })}
+                  className={`flex aspect-square items-center justify-center rounded-2xl ${form.icon === key ? 'bg-brand text-white' : 'bg-canvas text-muted hover:text-ink'}`}
+                >
+                  <Icon className="h-5 w-5" />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <span className="mb-1.5 block text-sm font-medium text-muted">Días</span>
+            <div className="grid grid-cols-7 gap-2">
+              {DIAS_CORTOS.map((letra, d) => {
+                const activo = !form.days.length || form.days.includes(d);
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    aria-label={`Día ${letra}`}
+                    aria-pressed={activo}
+                    onClick={() => alternarDia(d)}
+                    className={`flex aspect-square items-center justify-center rounded-full text-sm font-semibold ${activo ? 'bg-brand-soft text-brand-strong' : 'bg-canvas text-faint hover:text-muted'}`}
+                  >
+                    {letra}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-xs text-muted">{textoDias(form.days)}</p>
+          </div>
+
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-muted">Hora (opcional)</span>
+            <div className="flex gap-3">
+              <input type="time" className={`${field} flex-1 font-semibold tabular-nums`} value={form.time} onChange={e => setForm({ ...form, time: e.target.value })} />
+              {form.time && (
+                <button type="button" onClick={() => setForm({ ...form, time: '' })} className="shrink-0 rounded-2xl bg-canvas px-4 text-sm font-semibold text-muted hover:text-ink">
+                  Quitar
+                </button>
+              )}
+            </div>
+          </label>
+        </div>
+        <div className="mt-8 flex gap-3">
+          {editing && (
+            <button type="button" onClick={remove} className="flex items-center justify-center gap-2 rounded-2xl bg-bad-soft px-5 py-4 font-semibold text-bad hover:bg-[#fbdde1]">
+              <Trash2 className="h-5 w-5" /> <span className="hidden sm:inline">Eliminar</span>
+            </button>
+          )}
+          <button type="submit" disabled={!valid} className="flex-1 rounded-2xl bg-brand py-4 font-semibold text-white shadow-[0_12px_24px_-12px_rgb(62_102_214/0.8)] hover:bg-brand-strong disabled:opacity-40">
+            {editing ? 'Guardar cambios' : 'Agregar'}
+          </button>
+        </div>
+      </motion.form>
+    </motion.div>
+  );
+};
+
+// Apartado de hábitos dentro del calendario: se palomean igual que las tomas del día
+const HabitosSeccion = ({ date }: { date: string }) => {
+  const [habitos, setHabitos] = useState<Habit[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [draft, setDraft] = useState<HabitDraft | null>(null);
+
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    const q = query(collection(db, 'habits'), where('uid', '==', auth.currentUser.uid));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setHabitos(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Habit)));
+      setCargando(false);
+    }, (error) => {
+      handleFirestoreError(error, 'list', 'habits');
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const delDia = habitos
+    .filter(h => aplicaHabito(h, date))
+    .sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99') || a.name.localeCompare(b.name));
+  const hechos = delDia.filter(h => h.done?.[date]).length;
+
+  const alternar = async (h: Habit) => {
+    if (!h.id) return;
+    const done = { ...(h.done || {}) };
+    const marcar = !done[date];
+    if (marcar) done[date] = true;
+    else delete done[date];
+    try {
+      await updateDoc(doc(db, 'habits', h.id), { done });
+      // Confeti solo al cerrar el día: cuando este era el último hábito pendiente
+      if (marcar && hechos + 1 === delDia.length) {
+        confetti({ particleCount: 80, spread: 70, origin: { y: 0.7 }, colors: ['#5b86f0', '#8a79f0', '#3fc49b', '#f4a53d'] });
+      }
+    } catch (error) {
+      handleFirestoreError(error, 'update', `habits/${h.id}`);
+    }
+  };
+
+  const agregarSugerido = async (s: { name: string; icon: string; time: string }) => {
+    if (!auth.currentUser) return;
+    try {
+      await addDoc(collection(db, 'habits'), { ...s, days: [], uid: auth.currentUser.uid, done: {}, createdAt: serverTimestamp() });
+    } catch (error) {
+      handleFirestoreError(error, 'create', 'habits');
+    }
+  };
+
+  const nuevo = () => setDraft({ name: '', time: '', days: [], icon: 'agua' });
+  const sugerencias = HABITOS_SUGERIDOS.filter(s => !habitos.some(h => h.name === s.name));
+
+  if (cargando) return null;
+
+  return (
+    <section className="mt-7">
+      <div className="mb-3 flex items-center justify-between gap-3 px-1">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+          Hábitos{delDia.length > 0 && <span className="ml-2 font-medium normal-case tracking-normal text-faint">{hechos} de {delDia.length}</span>}
+        </h2>
+        {habitos.length > 0 && (
+          <button onClick={nuevo} className="flex items-center gap-1 rounded-full bg-card px-3 py-1.5 text-xs font-semibold text-brand-strong shadow-soft hover:bg-brand-soft">
+            <Plus className="h-4 w-4" /> Agregar
+          </button>
+        )}
+      </div>
+
+      {delDia.length === 0 ? (
+        <div className="rounded-[24px] bg-card p-[clamp(20px,3.4vmin,28px)] text-center shadow-soft">
+          <p className="font-semibold text-ink">{habitos.length === 0 ? 'Suma un hábito a tu día' : 'Ningún hábito toca este día'}</p>
+          <p className="mx-auto mt-1 max-w-sm text-sm text-muted">
+            {habitos.length === 0
+              ? 'Caminar, tomar agua o medir tu presión: lo palomeas junto con tus tomas.'
+              : 'Tus hábitos están programados para otros días de la semana.'}
+          </p>
+          {habitos.length === 0 && sugerencias.length > 0 && (
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              {sugerencias.map(s => (
+                <button key={s.name} onClick={() => agregarSugerido(s)} className="flex items-center gap-2 rounded-full bg-canvas px-3.5 py-2 text-sm font-medium text-ink hover:bg-brand-soft">
+                  <IconoHabito icon={s.icon} className="h-4 w-4 text-brand" /> {s.name}
+                </button>
+              ))}
+            </div>
+          )}
+          <button onClick={nuevo} className="mt-4 rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-strong">Crear un hábito</button>
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-[24px] bg-card shadow-soft">
+          <ul className="-mr-px -mb-px grid sm:grid-cols-2 lg:grid-cols-3">
+            {delDia.map(h => {
+              const hecho = !!h.done?.[date];
+              const tono = toneFor(h.name);
+              const racha = rachaHabito(h, date);
+              return (
+                <li key={h.id} className="flex items-center gap-3 px-[clamp(18px,2.6vmin,28px)] py-[clamp(16px,2.6vmin,26px)] shadow-[inset_-1px_0_0_var(--color-line),inset_0_-1px_0_var(--color-line)]">
+                  <button onClick={() => setDraft({ id: h.id, name: h.name, time: h.time || '', days: h.days || [], icon: h.icon })} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                    <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${tono.tile}`}>
+                      <IconoHabito icon={h.icon} className="h-5 w-5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className={`block truncate text-[clamp(1.05rem,2.2vmin,1.3rem)] font-medium leading-snug ${hecho ? 'text-muted' : 'text-ink'}`}>{h.name}</span>
+                      <span className="mt-0.5 flex items-center gap-2 text-sm text-muted">
+                        <span className="truncate">{h.time ? formatHora(h.time) : textoDias(h.days)}</span>
+                        {racha > 1 && <span className="flex shrink-0 items-center gap-1 text-sun-strong"><Flame className="h-3.5 w-3.5" />{racha}</span>}
+                      </span>
+                    </span>
+                  </button>
+                  <button onClick={() => alternar(h)} aria-label={hecho ? `Desmarcar ${h.name}` : `Marcar ${h.name} como hecho`} className="rounded-full">
+                    <CheckCircle done={hecho} className="h-[clamp(40px,5.5vmin,52px)] w-[clamp(40px,5.5vmin,52px)]" />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      <AnimatePresence>
+        {draft && <HabitSheet key="habito" draft={draft} onClose={() => setDraft(null)} />}
+      </AnimatePresence>
+    </section>
+  );
+};
+
 const CalendarView = ({ setView, requestPermission, notificationPermission, toggleComplete }: CalendarViewProps) => {
   const [reminders, setReminders] = useState<Medication[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1812,6 +2144,8 @@ const CalendarView = ({ setView, requestPermission, notificationPermission, togg
             </ul>
           </div>
         )}
+        <HabitosSeccion date={selectedDate} />
+
         <button onClick={() => setView('gallery')} className="tile mt-5 flex w-full items-center gap-4 rounded-[22px] bg-card px-5 py-4 text-left shadow-soft">
           <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-lav-soft text-lav"><FileText className="h-5 w-5" /></span>
           <span className="flex-1">
@@ -2285,7 +2619,7 @@ export default function App() {
       .catch(error => handleFirestoreError(error, 'update', 'user_settings'));
   };
 
-  const borrarTodo = async (col: 'reminders' | 'prescriptions') => {
+  const borrarTodo = async (col: 'reminders' | 'prescriptions' | 'habits') => {
     if (!auth.currentUser) return;
     try {
       const snapshot = await getDocs(query(collection(db, col), where('uid', '==', auth.currentUser.uid)));
