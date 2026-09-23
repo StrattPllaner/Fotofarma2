@@ -48,6 +48,7 @@ import {
   Moon,
   BookOpen,
   Smile,
+  Sun,
   Flame
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -92,6 +93,7 @@ interface Medication {
 interface UserSettings {
   uid: string;
   name?: string;
+  age?: number;
   dayStartTime: string;
   acceptedTerms: boolean;
 }
@@ -412,7 +414,7 @@ const SOLAPE = '-mt-[clamp(44px,7vh,64px)]'; // cuánto sube el contenido sobre 
 
 const LogoTile = () => (
   <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/95 shadow-sm">
-    <img src={`${import.meta.env.BASE_URL}marca.svg`} alt="FotoFarma" className="h-9 w-9" />
+    <img src={`${import.meta.env.BASE_URL}marca.svg`} alt="FotoFarma" className="h-10 w-10" />
   </span>
 );
 
@@ -625,6 +627,9 @@ const DashboardView = ({ setView, reminders, onToggle, userName }: DashboardProp
             </div>
           )}
           </div>
+
+          {/* Hábitos de hoy */}
+          <HabitosResumen setView={setView} />
         </section>
       </div>
     </motion.div>
@@ -1285,7 +1290,7 @@ const PerfilView = ({ userSettings, onUpdate, notificationPermission, requestPer
   const field = 'w-full rounded-2xl border border-line bg-canvas px-4 py-3.5 text-lg text-ink outline-none placeholder:text-faint focus:border-brand focus:bg-card';
 
   const filas: { Icon: any; label: string; detalle?: string; onClick: () => void; hide?: boolean }[] = [
-    { Icon: User, label: 'Datos personales', detalle: nombre || 'Sin nombre', onClick: () => setHoja('nombre') },
+    { Icon: User, label: 'Datos personales', detalle: [nombre, userSettings?.age ? `${userSettings.age} años` : null].filter(Boolean).join(' · ') || 'Sin nombre', onClick: () => setHoja('nombre') },
     { Icon: Clock3, label: 'Inicio de tu día', detalle: formatHora(userSettings?.dayStartTime || '08:00'), onClick: () => setHoja('horario') },
     { Icon: Bell, label: 'Notificaciones', detalle: avisos ? 'Activadas' : 'Desactivadas', onClick: () => (avisos ? onTestAlarm() : requestPermission()) },
     { Icon: Download, label: 'Instalar la app', onClick: onInstall, hide: !installPrompt },
@@ -1331,6 +1336,20 @@ const PerfilView = ({ userSettings, onUpdate, notificationPermission, requestPer
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-muted">¿Cómo te llamas?</span>
               <input autoFocus maxLength={30} className={field} placeholder="Tu nombre" value={userSettings?.name || ''} onChange={e => onUpdate({ name: e.target.value })} />
+            </label>
+            <label className="mt-4 block">
+              <span className="mb-1.5 block text-sm font-medium text-muted">¿Cuántos años tienes?</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={119}
+                className={field}
+                placeholder="Tu edad"
+                value={userSettings?.age ?? ''}
+                onChange={e => onUpdate({ age: e.target.value === '' ? undefined : Math.min(119, Math.max(1, Math.round(Number(e.target.value)))) })}
+              />
+              <span className="mt-1.5 block text-xs text-muted">Con ella te sugerimos los hábitos que van contigo.</span>
             </label>
             <button onClick={() => setHoja(null)} className="mt-6 w-full rounded-2xl bg-brand py-3.5 font-semibold text-white hover:bg-brand-strong">Listo</button>
           </Hoja>
@@ -1717,6 +1736,8 @@ const HABIT_ICONS: { key: string; Icon: LucideIcon }[] = [
   { key: 'dormir', Icon: Moon },
   { key: 'leer', Icon: BookOpen },
   { key: 'animo', Icon: Smile },
+  { key: 'pastillas', Icon: Pill },
+  { key: 'aire', Icon: Sun },
 ];
 
 const IconoHabito = ({ icon, className = '' }: { icon: string; className?: string }) => {
@@ -1757,12 +1778,53 @@ const rachaHabito = (h: Habit, hasta: string) => {
   return racha;
 };
 
-const HABITOS_SUGERIDOS: { name: string; icon: string; time: string }[] = [
-  { name: 'Tomar agua', icon: 'agua', time: '' },
-  { name: 'Caminar 20 minutos', icon: 'caminar', time: '18:00' },
-  { name: 'Medir mi presión', icon: 'presion', time: '09:00' },
-  { name: 'Dormir 8 horas', icon: 'dormir', time: '22:30' },
+// Las sugerencias cambian según la edad: no se le propone lo mismo a un niño que a un adulto mayor
+type Sugerencia = { name: string; icon: string; time: string };
+
+const GRUPOS_EDAD: { hasta: number; etiqueta: string; habitos: Sugerencia[] }[] = [
+  {
+    hasta: 12,
+    etiqueta: 'para niños',
+    habitos: [
+      { name: 'Tomar agua', icon: 'agua', time: '' },
+      { name: 'Jugar al aire libre', icon: 'aire', time: '17:00' },
+      { name: 'Lavarme los dientes', icon: 'animo', time: '20:30' },
+      { name: 'Dormir 9 horas', icon: 'dormir', time: '21:00' },
+    ],
+  },
+  {
+    hasta: 17,
+    etiqueta: 'para adolescentes',
+    habitos: [
+      { name: 'Tomar agua', icon: 'agua', time: '' },
+      { name: 'Moverme 60 minutos', icon: 'ejercicio', time: '18:00' },
+      { name: 'Desayunar', icon: 'comida', time: '07:30' },
+      { name: 'Dormir 8 horas', icon: 'dormir', time: '22:30' },
+    ],
+  },
+  {
+    hasta: 59,
+    etiqueta: 'para adultos',
+    habitos: [
+      { name: 'Tomar agua', icon: 'agua', time: '' },
+      { name: 'Caminar 20 minutos', icon: 'caminar', time: '18:00' },
+      { name: 'Comer verduras', icon: 'comida', time: '14:00' },
+      { name: 'Dormir 7 horas', icon: 'dormir', time: '23:00' },
+    ],
+  },
+  {
+    hasta: 200,
+    etiqueta: 'para adultos mayores',
+    habitos: [
+      { name: 'Medir mi presión', icon: 'presion', time: '09:00' },
+      { name: 'Caminar 20 minutos', icon: 'caminar', time: '09:30' },
+      { name: 'Tomar agua', icon: 'agua', time: '' },
+      { name: 'Revisar mi pastillero', icon: 'pastillas', time: '20:00' },
+    ],
+  },
 ];
+
+const grupoDeEdad = (edad: number | null) => (edad == null ? null : GRUPOS_EDAD.find(g => edad <= g.hasta) || GRUPOS_EDAD[GRUPOS_EDAD.length - 1]);
 
 type HabitDraft = { id?: string; name: string; time: string; days: number[]; icon: string };
 
@@ -1829,7 +1891,7 @@ const HabitSheet = ({ draft, onClose }: { draft: HabitDraft; onClose: () => void
 
           <div>
             <span className="mb-1.5 block text-sm font-medium text-muted">Icono</span>
-            <div className="grid grid-cols-8 gap-2">
+            <div className="grid grid-cols-5 gap-2">
               {HABIT_ICONS.map(({ key, Icon }) => (
                 <button
                   key={key}
@@ -1895,10 +1957,10 @@ const HabitSheet = ({ draft, onClose }: { draft: HabitDraft; onClose: () => void
 };
 
 // Apartado de hábitos dentro del calendario: se palomean igual que las tomas del día
-const HabitosSeccion = ({ date }: { date: string }) => {
+// Los hábitos del día: los usan el calendario y el resumen de Inicio
+const useHabitos = (date: string) => {
   const [habitos, setHabitos] = useState<Habit[]>([]);
   const [cargando, setCargando] = useState(true);
-  const [draft, setDraft] = useState<HabitDraft | null>(null);
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -1934,6 +1996,100 @@ const HabitosSeccion = ({ date }: { date: string }) => {
     }
   };
 
+  return { habitos, delDia, hechos, cargando, alternar };
+};
+
+const HabitoFila = ({ habit, date, onAbrir, onAlternar }: { habit: Habit; date: string; onAbrir?: () => void; onAlternar: () => void; key?: string }) => {
+  const hecho = !!habit.done?.[date];
+  const tono = toneFor(habit.name);
+  const racha = rachaHabito(habit, date);
+  const Etiqueta = onAbrir ? 'button' : 'span';
+  return (
+    <li className="flex items-center gap-3 px-[clamp(18px,2.6vmin,28px)] py-[clamp(14px,2.4vmin,24px)] shadow-[inset_-1px_0_0_var(--color-line),inset_0_-1px_0_var(--color-line)]">
+      <Etiqueta onClick={onAbrir} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${tono.tile}`}>
+          <IconoHabito icon={habit.icon} className="h-5 w-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className={`block truncate text-[clamp(1rem,2.1vmin,1.25rem)] font-medium leading-snug ${hecho ? 'text-muted' : 'text-ink'}`}>{habit.name}</span>
+          <span className="mt-0.5 flex items-center gap-2 text-sm text-muted">
+            <span className="truncate">{habit.time ? formatHora(habit.time) : textoDias(habit.days)}</span>
+            {racha > 1 && <span className="flex shrink-0 items-center gap-1 text-sun-strong"><Flame className="h-3.5 w-3.5" />{racha}</span>}
+          </span>
+        </span>
+      </Etiqueta>
+      <button onClick={onAlternar} aria-label={hecho ? `Desmarcar ${habit.name}` : `Marcar ${habit.name} como hecho`} className="rounded-full">
+        <CheckCircle done={hecho} className="h-[clamp(38px,5.2vmin,50px)] w-[clamp(38px,5.2vmin,50px)]" />
+      </button>
+    </li>
+  );
+};
+
+// Resumen de los hábitos de hoy en la pantalla de Inicio
+const HabitosResumen = ({ setView }: { setView: (v: View) => void }) => {
+  const hoy = getLocalDateString(new Date());
+  const { delDia, hechos, cargando, alternar } = useHabitos(hoy);
+  if (cargando) return null;
+
+  return (
+    <section className="mt-6">
+      <div className="mb-3 flex items-center justify-between gap-3 px-1">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+          Hábitos de hoy
+          {delDia.length > 0 && <span className="ml-2 font-medium normal-case tracking-normal text-faint">{hechos} de {delDia.length}</span>}
+        </h2>
+        {delDia.length > 0 && (
+          <button onClick={() => setView('calendar')} className="flex items-center gap-1 text-xs font-semibold text-brand-strong hover:underline">
+            Ver todos <ChevronRight className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+      {delDia.length === 0 ? (
+        <button onClick={() => setView('calendar')} className="tile flex w-full items-center gap-4 rounded-[22px] bg-card px-5 py-4 text-left shadow-soft">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-mint-soft text-mint"><Sparkle className="h-5 w-5" /></span>
+          <span className="flex-1">
+            <span className="block font-semibold text-ink">Suma tus hábitos</span>
+            <span className="block text-sm text-muted">Agua, caminar, dormir: se palomean con tus tomas</span>
+          </span>
+          <ChevronRight className="h-5 w-5 text-faint" />
+        </button>
+      ) : (
+        <div className="overflow-hidden rounded-[24px] bg-card shadow-soft">
+          <ul className="-mb-px grid">
+            {delDia.slice(0, 4).map(h => (
+              <HabitoFila key={h.id} habit={h} date={hoy} onAlternar={() => alternar(h)} />
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+};
+
+const HabitosSeccion = ({ date }: { date: string }) => {
+  const { habitos, delDia, hechos, cargando, alternar } = useHabitos(date);
+  const [draft, setDraft] = useState<HabitDraft | null>(null);
+  const [edad, setEdad] = useState<number | null>(null);
+  const [edadTecleada, setEdadTecleada] = useState('');
+
+  // La edad vive en los ajustes del usuario; de ella dependen los hábitos que se sugieren
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    return onSnapshot(doc(db, 'user_settings', auth.currentUser.uid), (snap) => {
+      const a = snap.data()?.age;
+      setEdad(typeof a === 'number' && a > 0 ? a : null);
+    });
+  }, []);
+
+  const guardarEdad = async (valor: number) => {
+    if (!auth.currentUser || !(valor > 0 && valor < 120)) return;
+    try {
+      await setDoc(doc(db, 'user_settings', auth.currentUser.uid), { age: Math.round(valor) }, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, 'update', 'user_settings');
+    }
+  };
+
   const agregarSugerido = async (s: { name: string; icon: string; time: string }) => {
     if (!auth.currentUser) return;
     try {
@@ -1944,7 +2100,8 @@ const HabitosSeccion = ({ date }: { date: string }) => {
   };
 
   const nuevo = () => setDraft({ name: '', time: '', days: [], icon: 'agua' });
-  const sugerencias = HABITOS_SUGERIDOS.filter(s => !habitos.some(h => h.name === s.name));
+  const grupo = grupoDeEdad(edad);
+  const sugerencias = (grupo?.habitos || []).filter(s => !habitos.some(h => h.name === s.name));
 
   if (cargando) return null;
 
@@ -1966,47 +2123,61 @@ const HabitosSeccion = ({ date }: { date: string }) => {
           <p className="font-semibold text-ink">{habitos.length === 0 ? 'Suma un hábito a tu día' : 'Ningún hábito toca este día'}</p>
           <p className="mx-auto mt-1 max-w-sm text-sm text-muted">
             {habitos.length === 0
-              ? 'Caminar, tomar agua o medir tu presión: lo palomeas junto con tus tomas.'
+              ? (edad == null
+                  ? 'Los palomeas junto con tus tomas. Dinos tu edad y te proponemos los que van contigo.'
+                  : 'Elige uno de estos o crea el tuyo; lo palomeas junto con tus tomas.')
               : 'Tus hábitos están programados para otros días de la semana.'}
           </p>
-          {habitos.length === 0 && sugerencias.length > 0 && (
-            <div className="mt-4 flex flex-wrap justify-center gap-2">
-              {sugerencias.map(s => (
-                <button key={s.name} onClick={() => agregarSugerido(s)} className="flex items-center gap-2 rounded-full bg-canvas px-3.5 py-2 text-sm font-medium text-ink hover:bg-brand-soft">
-                  <IconoHabito icon={s.icon} className="h-4 w-4 text-brand" /> {s.name}
+          {habitos.length === 0 && (
+            edad == null ? (
+              <form
+                onSubmit={(e) => { e.preventDefault(); guardarEdad(Number(edadTecleada)); }}
+                className="mx-auto mt-5 flex max-w-xs items-center gap-2"
+              >
+                <label className="flex-1 text-left">
+                  <span className="mb-1.5 block text-sm font-medium text-muted">¿Cuántos años tienes?</span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={119}
+                    value={edadTecleada}
+                    onChange={e => setEdadTecleada(e.target.value)}
+                    placeholder="Ej. 34"
+                    className="w-full rounded-2xl border border-line bg-canvas px-4 py-3 text-base text-ink outline-none transition-colors placeholder:text-faint focus:border-brand focus:bg-card"
+                  />
+                </label>
+                <button type="submit" disabled={!(Number(edadTecleada) > 0)} className="mt-6 shrink-0 rounded-2xl bg-brand px-5 py-3 text-sm font-semibold text-white hover:bg-brand-strong disabled:opacity-40">
+                  Listo
                 </button>
-              ))}
-            </div>
+              </form>
+            ) : sugerencias.length > 0 && (
+              <>
+                <p className="mt-5 text-xs font-semibold uppercase tracking-[0.12em] text-faint">Sugerencias {grupo?.etiqueta} ({edad} años)</p>
+                <div className="mt-3 flex flex-wrap justify-center gap-2">
+                  {sugerencias.map(s => (
+                    <button key={s.name} onClick={() => agregarSugerido(s)} className="flex items-center gap-2 rounded-full bg-canvas px-3.5 py-2 text-sm font-medium text-ink hover:bg-brand-soft">
+                      <IconoHabito icon={s.icon} className="h-4 w-4 text-brand" /> {s.name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )
           )}
           <button onClick={nuevo} className="mt-4 rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-strong">Crear un hábito</button>
         </div>
       ) : (
         <div className="overflow-hidden rounded-[24px] bg-card shadow-soft">
           <ul className="-mr-px -mb-px grid sm:grid-cols-2 lg:grid-cols-3">
-            {delDia.map(h => {
-              const hecho = !!h.done?.[date];
-              const tono = toneFor(h.name);
-              const racha = rachaHabito(h, date);
-              return (
-                <li key={h.id} className="flex items-center gap-3 px-[clamp(18px,2.6vmin,28px)] py-[clamp(16px,2.6vmin,26px)] shadow-[inset_-1px_0_0_var(--color-line),inset_0_-1px_0_var(--color-line)]">
-                  <button onClick={() => setDraft({ id: h.id, name: h.name, time: h.time || '', days: h.days || [], icon: h.icon })} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                    <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${tono.tile}`}>
-                      <IconoHabito icon={h.icon} className="h-5 w-5" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className={`block truncate text-[clamp(1.05rem,2.2vmin,1.3rem)] font-medium leading-snug ${hecho ? 'text-muted' : 'text-ink'}`}>{h.name}</span>
-                      <span className="mt-0.5 flex items-center gap-2 text-sm text-muted">
-                        <span className="truncate">{h.time ? formatHora(h.time) : textoDias(h.days)}</span>
-                        {racha > 1 && <span className="flex shrink-0 items-center gap-1 text-sun-strong"><Flame className="h-3.5 w-3.5" />{racha}</span>}
-                      </span>
-                    </span>
-                  </button>
-                  <button onClick={() => alternar(h)} aria-label={hecho ? `Desmarcar ${h.name}` : `Marcar ${h.name} como hecho`} className="rounded-full">
-                    <CheckCircle done={hecho} className="h-[clamp(40px,5.5vmin,52px)] w-[clamp(40px,5.5vmin,52px)]" />
-                  </button>
-                </li>
-              );
-            })}
+            {delDia.map(h => (
+              <HabitoFila
+                key={h.id}
+                habit={h}
+                date={date}
+                onAbrir={() => setDraft({ id: h.id, name: h.name, time: h.time || '', days: h.days || [], icon: h.icon })}
+                onAlternar={() => alternar(h)}
+              />
+            ))}
           </ul>
         </div>
       )}
