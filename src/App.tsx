@@ -52,6 +52,7 @@ import {
   Flame
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { PuertaTerminos, ConsentimientoIA, TextoLegal, TERMINOS_VERSION } from './Legal';
 import {
   auth,
   db,
@@ -96,6 +97,9 @@ interface UserSettings {
   age?: number;
   dayStartTime: string;
   acceptedTerms: boolean;
+  termsVersion?: string;      // versión aceptada; si cambia, se vuelve a pedir
+  termsAcceptedAt?: number;
+  healthConsent?: boolean;    // consentimiento expreso para mandar la receta a la IA
 }
 
 interface Habit {
@@ -492,31 +496,6 @@ const Hoja = ({ title, onClose, children }: { title: string; onClose: () => void
       {children}
     </motion.div>
   </motion.div>
-);
-
-const AvisoLegal = ({ onClose }: { onClose: () => void; key?: string }) => (
-  <Hoja title="Aviso legal" onClose={onClose}>
-    <div className="space-y-4 text-sm leading-relaxed text-muted">
-      <p className="rounded-2xl bg-sun-soft p-4 text-ink">FotoFarma es una herramienta de apoyo. <b>No es un dispositivo médico</b> ni reemplaza la consulta con un profesional de la salud.</p>
-      <section>
-        <h4 className="font-semibold text-ink">1. Lectura automática</h4>
-        <p>La lectura de la foto la hace un modelo de inteligencia artificial y puede equivocarse con la letra o con el nombre de un medicamento.</p>
-      </section>
-      <section>
-        <h4 className="font-semibold text-ink">2. Revisión obligatoria</h4>
-        <p>Antes de guardar, comprueba que cada medicamento, dosis y horario coincida con lo que indicó tu médico.</p>
-      </section>
-      <section>
-        <h4 className="font-semibold text-ink">3. Interacciones</h4>
-        <p>La revisión de interacciones busca casos conocidos, pero no cubre todos los posibles.</p>
-      </section>
-      <section>
-        <h4 className="font-semibold text-ink">4. Tus datos</h4>
-        <p>Tus recetas y recordatorios se guardan solo en este navegador. Si borras los datos del navegador, se pierden.</p>
-      </section>
-    </div>
-    <button onClick={onClose} className="mt-6 w-full rounded-2xl bg-ink py-3.5 font-semibold text-white">Entendido</button>
-  </Hoja>
 );
 
 const SeccionTitulo = ({ children }: { children: ReactNode }) => (
@@ -1294,7 +1273,7 @@ const PerfilView = ({ userSettings, onUpdate, notificationPermission, requestPer
     { Icon: Clock3, label: 'Inicio de tu día', detalle: formatHora(userSettings?.dayStartTime || '08:00'), onClick: () => setHoja('horario') },
     { Icon: Bell, label: 'Notificaciones', detalle: avisos ? 'Activadas' : 'Desactivadas', onClick: () => (avisos ? onTestAlarm() : requestPermission()) },
     { Icon: Download, label: 'Instalar la app', onClick: onInstall, hide: !installPrompt },
-    { Icon: HelpCircle, label: 'Aviso legal', onClick: () => setHoja('aviso') },
+    { Icon: ShieldCheck, label: 'Términos y privacidad', detalle: userSettings?.termsVersion ? `Versión ${userSettings.termsVersion}` : undefined, onClick: () => setHoja('aviso') },
   ];
 
   return (
@@ -1361,7 +1340,12 @@ const PerfilView = ({ userSettings, onUpdate, notificationPermission, requestPer
             <button onClick={() => setHoja(null)} className="mt-6 w-full rounded-2xl bg-brand py-3.5 font-semibold text-white hover:bg-brand-strong">Listo</button>
           </Hoja>
         )}
-        {hoja === 'aviso' && <AvisoLegal key="aviso" onClose={() => setHoja(null)} />}
+        {hoja === 'aviso' && (
+          <Hoja key="aviso" title="Términos y privacidad" onClose={() => setHoja(null)}>
+            <TextoLegal />
+            <button onClick={() => setHoja(null)} className="mt-6 w-full rounded-2xl bg-ink py-3.5 font-semibold text-white">Entendido</button>
+          </Hoja>
+        )}
         {hoja === 'borrar' && (
           <Hoja key="borrar" title="Borrar mis datos" onClose={() => setHoja(null)}>
             <p className="mb-5 text-sm text-muted">Se eliminan todas las tomas, recetas y hábitos guardados en este dispositivo. No se pueden recuperar.</p>
@@ -1539,7 +1523,12 @@ const Portada = ({ onStart }: { onStart: () => void; key?: string }) => {
       </div>
 
       <AnimatePresence>
-        {showTerms && <AvisoLegal key="aviso" onClose={() => setShowTerms(false)} />}
+        {showTerms && (
+          <Hoja key="aviso" title="Términos y privacidad" onClose={() => setShowTerms(false)}>
+            <TextoLegal />
+            <button onClick={() => setShowTerms(false)} className="mt-6 w-full rounded-2xl bg-ink py-3.5 font-semibold text-white">Entendido</button>
+          </Hoja>
+        )}
       </AnimatePresence>
     </motion.div>
   );
@@ -2816,7 +2805,7 @@ export default function App() {
         const defaultSettings: UserSettings = {
           uid: user.uid,
           dayStartTime: '08:00',
-          acceptedTerms: true
+          acceptedTerms: false
         };
         setUserSettings(defaultSettings);
         // Persist default settings
@@ -3111,11 +3100,27 @@ export default function App() {
     }
   };
 
+  const aceptarTerminos = (consienteIA: boolean) => {
+    if (!user) return;
+    setDoc(doc(db, 'user_settings', user.uid), {
+      acceptedTerms: true,
+      termsVersion: TERMINOS_VERSION,
+      termsAcceptedAt: Date.now(),
+      healthConsent: consienteIA,
+      updatedAt: serverTimestamp(),
+    }, { merge: true }).catch(error => handleFirestoreError(error, 'update', 'user_settings'));
+  };
+
+  // Sin términos aceptados (o con una versión vieja) no se entra a la app
+  const faltaAceptar = !!userSettings && (!userSettings.acceptedTerms || userSettings.termsVersion !== TERMINOS_VERSION);
+
   return (
     <div className="min-h-dvh bg-canvas font-sans text-ink selection:bg-brand-soft selection:text-brand-strong">
       <AnimatePresence>
         {showSplash && <Splash key="splash" />}
       </AnimatePresence>
+
+      {faltaAceptar && !showSplash && <PuertaTerminos key="terminos" onAceptar={aceptarTerminos} />}
 
       <AnimatePresence>
         {activeAlarm && (
@@ -3146,7 +3151,15 @@ export default function App() {
             userName={userSettings?.name}
           />
         )}
-        {view === 'camera' && <CameraView key="camera" setView={setView} setCapturedImage={setCapturedImage} />}
+        {view === 'camera' && (
+          userSettings?.healthConsent
+            ? <CameraView key="camera" setView={setView} setCapturedImage={setCapturedImage} />
+            : <ConsentimientoIA
+                key="consentimiento"
+                onAceptar={() => actualizarAjustes({ healthConsent: true })}
+                onCancelar={() => setView('calendar')}
+              />
+        )}
         {view === 'calendar' && <CalendarView key="calendar" setView={setView} requestPermission={requestPermission} notificationPermission={notificationPermission} toggleComplete={toggleComplete} />}
         {view === 'gallery' && <GalleryView key="gallery" setView={setView} onOpen={(id) => { setRecetaId(id); setView('receta'); }} />}
         {view === 'receta' && <RecetaView key="receta" id={recetaId} setView={setView} />}
