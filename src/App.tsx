@@ -40,6 +40,7 @@ import {
   Store,
   Navigation,
   Phone,
+  Stethoscope,
   Droplets,
   Footprints,
   Dumbbell,
@@ -74,7 +75,7 @@ import {
 } from './localdb';
 
 // --- Types ---
-type View = 'login' | 'dashboard' | 'camera' | 'calendar' | 'preview' | 'perfil' | 'gallery' | 'receta' | 'farmacias';
+type View = 'login' | 'dashboard' | 'camera' | 'calendar' | 'preview' | 'perfil' | 'gallery' | 'receta' | 'busqueda';
 
 interface Medication {
   id?: string;
@@ -787,15 +788,18 @@ const OVERPASS = [
   'https://overpass.private.coffee/api/interpreter',
 ];
 
-interface Farmacia {
+type TipoLugar = 'farmacia' | 'hospital';
+
+interface Lugar {
   id: string;
   nombre: string;
   direccion: string;
   lat: number;
   lon: number;
-  distancia: number; // metros
+  distancia: number;   // metros
   horario?: string;
   telefono?: string;
+  etiquetas: string[]; // «Urgencias», «Clínica», el operador (IMSS, Cruz Roja…)
 }
 
 const distanciaM = (a: { lat: number; lon: number }, b: { lat: number; lon: number }) => {
@@ -810,12 +814,19 @@ const formatDistancia = (m: number) => (m < 1000 ? `${Math.round(m / 10) * 10} m
 const DIAS: Record<string, string> = { Mo: 'Lu', Tu: 'Ma', We: 'Mi', Th: 'Ju', Fr: 'Vi', Sa: 'Sá', Su: 'Do', PH: 'Festivos' };
 const formatHorario = (h?: string) => {
   if (!h) return undefined;
-  if (h.trim() === '24/7') return 'Abierta 24 horas';
+  if (h.trim() === '24/7') return 'Abierto 24 horas';
   return h.replace(/\b(Mo|Tu|We|Th|Fr|Sa|Su|PH)\b/g, d => DIAS[d]).replace(/;\s*/g, ' · ').replace(/\boff\b/g, 'cerrado');
 };
 
-const buscarFarmacias = async (lat: number, lon: number, radio: number): Promise<Farmacia[]> => {
-  const q = `[out:json][timeout:20];(node["amenity"="pharmacy"](around:${radio},${lat},${lon});way["amenity"="pharmacy"](around:${radio},${lat},${lon}););out center 60;`;
+// Filtros de OpenStreetMap por tipo de lugar
+const FILTRO_OSM: Record<TipoLugar, string> = {
+  farmacia: '["amenity"="pharmacy"]',
+  hospital: '["amenity"~"^(hospital|clinic)$"]',
+};
+
+const buscarLugares = async (tipo: TipoLugar, lat: number, lon: number, radio: number): Promise<Lugar[]> => {
+  const f = FILTRO_OSM[tipo];
+  const q = `[out:json][timeout:25];(node${f}(around:${radio},${lat},${lon});way${f}(around:${radio},${lat},${lon}););out center 60;`;
   let ultimoError: unknown;
   for (const url of OVERPASS) {
     const ctrl = new AbortController();
@@ -825,24 +836,32 @@ const buscarFarmacias = async (lat: number, lon: number, radio: number): Promise
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       return (json.elements || [])
-        .map((e: any): Farmacia | null => {
+        .map((e: any): Lugar | null => {
           const p = e.type === 'node' ? { lat: e.lat, lon: e.lon } : e.center;
           if (!p) return null;
           const tg = e.tags || {};
           const calle = [tg['addr:street'], tg['addr:housenumber']].filter(Boolean).join(' ');
+          const etiquetas: string[] = [];
+          if (tipo === 'hospital') {
+            etiquetas.push(tg.amenity === 'clinic' ? 'Clínica' : 'Hospital');
+            if (tg.emergency === 'yes') etiquetas.push('Urgencias');
+            const operador = tg['operator:short'] || tg.operator;
+            if (operador && operador.length <= 28) etiquetas.push(operador);
+          }
           return {
             id: `${e.type}/${e.id}`,
-            nombre: tg.name || tg.brand || 'Farmacia',
+            nombre: tg.name || tg.brand || (tipo === 'hospital' ? 'Hospital' : 'Farmacia'),
             direccion: [calle, tg['addr:suburb'] || tg['addr:city']].filter(Boolean).join(', '),
             lat: p.lat,
             lon: p.lon,
             distancia: distanciaM({ lat, lon }, p),
             horario: formatHorario(tg.opening_hours),
             telefono: tg.phone || tg['contact:phone'],
+            etiquetas,
           };
         })
         .filter(Boolean)
-        .sort((a: Farmacia, b: Farmacia) => a.distancia - b.distancia)
+        .sort((a: Lugar, b: Lugar) => a.distancia - b.distancia)
         .slice(0, 25);
     } catch (err) {
       ultimoError = err;
@@ -853,9 +872,6 @@ const buscarFarmacias = async (lat: number, lon: number, radio: number): Promise
   throw ultimoError;
 };
 
-// --- Disponibilidad en cadenas (precio y existencia reales de sus tiendas en línea) ---
-// Farmacias del Ahorro se consulta directo (su servicio permite llamadas desde el navegador).
-// Similares y Benavides pasan por el intermediario de proxy/worker.js (VITE_PROXY_URL).
 const PROXY_URL = (import.meta.env.VITE_PROXY_URL || '').replace(/\/$/, '');
 
 // Capitales para buscar sucursales por estado cuando no se comparte la ubicación (Morelos primero)
@@ -1059,12 +1075,64 @@ const DisponibilidadCadenas = ({ med, coords, onUbicar }: { med: string; coords:
   );
 };
 
-const FarmaciasView = (_: { key?: string }) => {
+// Tarjeta de un lugar del mapa (farmacia u hospital)
+const TarjetaLugar = ({ lugar, Icono, indice, acento }: { lugar: Lugar; Icono: any; indice: number; acento?: boolean; key?: string }) => {
+  const tono = toneFor(lugar.nombre);
+  return (
+    <motion.li
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, delay: Math.min(indice, 8) * 0.03, ease: [0.2, 0.8, 0.2, 1] }}
+      className="rounded-[22px] bg-card p-4 shadow-soft"
+    >
+      <div className="flex items-start gap-3">
+        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${acento ? 'bg-bad-soft text-bad' : tono.tile}`}>
+          <Icono className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold text-ink">{lugar.nombre}</p>
+          {lugar.direccion && <p className="truncate text-sm text-muted">{lugar.direccion}</p>}
+          {lugar.etiquetas.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {lugar.etiquetas.map(e => (
+                <span key={e} className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${e === 'Urgencias' ? 'bg-bad-soft text-bad' : 'bg-canvas text-muted'}`}>{e}</span>
+              ))}
+            </div>
+          )}
+          {lugar.horario && <p className={`mt-1 truncate text-xs ${lugar.horario.startsWith('Abierto 24') ? 'font-semibold text-mint-strong' : 'text-muted'}`}>{lugar.horario}</p>}
+        </div>
+        <span className="shrink-0 rounded-full bg-canvas px-2.5 py-1 text-xs font-semibold text-muted tabular-nums">{formatDistancia(lugar.distancia)}</span>
+      </div>
+      <div className="mt-3 flex gap-2 pl-14">
+        <a
+          href={`https://www.google.com/maps/dir/?api=1&destination=${lugar.lat},${lugar.lon}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-strong"
+        >
+          <Navigation className="h-4 w-4" /> Cómo llegar
+        </a>
+        {lugar.telefono && (
+          <a href={`tel:${lugar.telefono.replace(/[^\d+]/g, '')}`} className="flex items-center gap-1.5 rounded-full bg-brand-soft px-4 py-2 text-sm font-semibold text-brand-strong hover:bg-[#dde6fc]">
+            <Phone className="h-4 w-4" /> Llamar
+          </a>
+        )}
+      </div>
+    </motion.li>
+  );
+};
+
+type EstadoBusqueda = 'inicio' | 'ubicando' | 'buscando' | 'listo' | 'sin-permiso' | 'error';
+
+const BusquedaView = (_: { key?: string }) => {
+  const [apartado, setApartado] = useState<TipoLugar>('farmacia');
   const [busqueda, setBusqueda] = useState('');
   const [misMeds, setMisMeds] = useState<string[]>([]);
-  const [estado, setEstado] = useState<'inicio' | 'ubicando' | 'buscando' | 'listo' | 'sin-permiso' | 'error'>('inicio');
-  const [farmacias, setFarmacias] = useState<Farmacia[]>([]);
   const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
+  const [estado, setEstado] = useState<Record<TipoLugar, EstadoBusqueda>>({ farmacia: 'inicio', hospital: 'inicio' });
+  const [lugares, setLugares] = useState<Record<TipoLugar, Lugar[]>>({ farmacia: [], hospital: [] });
+
+  const esFarmacia = apartado === 'farmacia';
 
   // Nombres de las medicinas que ya tienes en tus tomas, para buscarlas con un toque
   useEffect(() => {
@@ -1079,40 +1147,63 @@ const FarmaciasView = (_: { key?: string }) => {
     });
   }, []);
 
-  const localizar = () => {
-    if (!('geolocation' in navigator)) { setEstado('sin-permiso'); return; }
-    setEstado('ubicando');
+  const localizar = (tipo: TipoLugar) => {
+    if (!('geolocation' in navigator)) { setEstado(e => ({ ...e, [tipo]: 'sin-permiso' })); return; }
+    setEstado(e => ({ ...e, [tipo]: 'ubicando' }));
     navigator.geolocation.getCurrentPosition(
-      async ({ coords }) => {
-        setCoords({ lat: coords.latitude, lon: coords.longitude });
-        setEstado('buscando');
+      async ({ coords: c }) => {
+        setCoords({ lat: c.latitude, lon: c.longitude });
+        setEstado(e => ({ ...e, [tipo]: 'buscando' }));
         try {
-          let lista = await buscarFarmacias(coords.latitude, coords.longitude, 3000);
-          if (lista.length < 3) lista = await buscarFarmacias(coords.latitude, coords.longitude, 10000);
-          setFarmacias(lista);
-          setEstado('listo');
+          let lista = await buscarLugares(tipo, c.latitude, c.longitude, tipo === 'hospital' ? 5000 : 3000);
+          if (lista.length < 3) lista = await buscarLugares(tipo, c.latitude, c.longitude, 15000);
+          setLugares(l => ({ ...l, [tipo]: lista }));
+          setEstado(e => ({ ...e, [tipo]: 'listo' }));
         } catch {
-          setEstado('error');
+          setEstado(e => ({ ...e, [tipo]: 'error' }));
         }
       },
-      () => setEstado('sin-permiso'),
+      () => setEstado(e => ({ ...e, [tipo]: 'sin-permiso' })),
       { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 }
     );
   };
 
-  const med = busqueda.trim();
-  const mapsBusqueda = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(med ? `farmacia ${med}` : 'farmacia')}`;
-  const cargando = estado === 'ubicando' || estado === 'buscando';
+  const texto = busqueda.trim();
+  const med = esFarmacia ? texto : '';
+  const estadoActual = estado[apartado];
+  const cargando = estadoActual === 'ubicando' || estadoActual === 'buscando';
+  const resultados = lugares[apartado].filter(l =>
+    esFarmacia || !texto || l.nombre.toLowerCase().includes(texto.toLowerCase())
+  );
+  const mapsBusqueda = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+    esFarmacia ? (med ? `farmacia ${med}` : 'farmacia') : (texto || 'hospital')
+  )}`;
+
+  const Pestana = ({ tipo, Icono, children }: { tipo: TipoLugar; Icono: any; children: ReactNode }) => (
+    <button
+      onClick={() => setApartado(tipo)}
+      aria-pressed={apartado === tipo}
+      className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition-colors ${apartado === tipo ? 'bg-card text-brand-strong shadow-[0_8px_18px_-12px_rgb(20_40_110/0.7)]' : 'text-white/85 hover:text-white'}`}
+    >
+      <Icono className="h-4 w-4" /> {children}
+    </button>
+  );
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="min-h-dvh bg-canvas pb-[calc(var(--nav-h)+28px)]">
-      <Banda title="Farmacias" center right={<LogoTile />}>
+      <Banda title="Búsqueda" center right={<LogoTile />}>
+        {/* Dos apartados: medicinas en farmacias u hospitales cercanos */}
+        <div className="mt-3 flex gap-1 rounded-2xl bg-white/15 p-1">
+          <Pestana tipo="farmacia" Icono={Store}>Medicinas</Pestana>
+          <Pestana tipo="hospital" Icono={Stethoscope}>Hospitales</Pestana>
+        </div>
+
         <label className="mt-3 flex items-center gap-3 rounded-2xl bg-card px-4 py-3 text-ink shadow-[0_10px_24px_-14px_rgb(20_40_110/0.6)]">
           <Search className="h-5 w-5 shrink-0 text-muted" />
           <input
             value={busqueda}
             onChange={e => setBusqueda(e.target.value)}
-            placeholder="¿Qué medicamento necesitas?"
+            placeholder={esFarmacia ? '¿Qué medicamento necesitas?' : 'Filtrar por nombre del hospital'}
             className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-faint"
             enterKeyHint="search"
           />
@@ -1128,20 +1219,47 @@ const FarmaciasView = (_: { key?: string }) => {
         {/* Columna izquierda: qué buscas y dónde estás */}
         <div className="space-y-6">
           <section className="rounded-[28px] bg-card p-[clamp(20px,3.4vmin,28px)] shadow-soft">
-            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-soft text-brand"><MapPin className="h-6 w-6" /></span>
-            <h2 className="mt-4 text-lg font-semibold text-ink">¿Te quedaste sin {med || 'medicinas'}?</h2>
-            <p className="mt-1 text-sm text-muted">Te mostramos las farmacias más cercanas para que vayas a comprarlo. Usamos tu ubicación solo para esta búsqueda.</p>
+            <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${esFarmacia ? 'bg-brand-soft text-brand' : 'bg-mint-soft text-mint-strong'}`}>
+              {esFarmacia ? <MapPin className="h-6 w-6" /> : <Stethoscope className="h-6 w-6" />}
+            </span>
+            <h2 className="mt-4 text-lg font-semibold text-ink">
+              {esFarmacia ? <>¿Te quedaste sin {med || 'medicinas'}?</> : '¿Necesitas atención médica?'}
+            </h2>
+            <p className="mt-1 text-sm text-muted">
+              {esFarmacia
+                ? 'Te mostramos las farmacias más cercanas para que vayas a comprarlo. Usamos tu ubicación solo para esta búsqueda.'
+                : 'Te mostramos hospitales y clínicas cerca de ti, con su distancia, su horario y cómo llegar. Usamos tu ubicación solo para esta búsqueda.'}
+            </p>
             <button
-              onClick={localizar}
+              onClick={() => localizar(apartado)}
               disabled={cargando}
-              className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-brand py-3.5 font-semibold text-white shadow-[0_16px_30px_-16px_rgb(62_102_214/0.9)] hover:bg-brand-strong disabled:opacity-70"
+              className={`mt-5 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 font-semibold text-white disabled:opacity-70 ${esFarmacia ? 'bg-brand shadow-[0_16px_30px_-16px_rgb(62_102_214/0.9)] hover:bg-brand-strong' : 'bg-mint-strong shadow-[0_16px_30px_-16px_rgb(23_160_122/0.9)] hover:bg-mint'}`}
             >
               {cargando ? <Loader2 className="h-5 w-5 animate-spin" /> : <LocateFixed className="h-5 w-5" />}
-              {estado === 'ubicando' ? 'Buscando tu ubicación…' : estado === 'buscando' ? 'Buscando farmacias…' : estado === 'listo' ? 'Actualizar' : 'Buscar farmacias cercanas'}
+              {estadoActual === 'ubicando'
+                ? 'Buscando tu ubicación…'
+                : estadoActual === 'buscando'
+                  ? (esFarmacia ? 'Buscando farmacias…' : 'Buscando hospitales…')
+                  : estadoActual === 'listo'
+                    ? 'Actualizar'
+                    : (esFarmacia ? 'Buscar farmacias cercanas' : 'Buscar hospitales cercanos')}
             </button>
           </section>
 
-          {misMeds.length > 0 && (
+          {!esFarmacia && (
+            <section className="flex items-start gap-3 rounded-[24px] bg-bad-soft p-5">
+              <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-bad" />
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-ink">Si es una emergencia, no busques: llama</p>
+                <p className="mt-1 text-sm text-muted">El 911 atiende urgencias médicas en todo el país y manda la ambulancia al lugar donde estás.</p>
+                <a href="tel:911" className="mt-3 inline-flex items-center gap-2 rounded-full bg-bad px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90">
+                  <Phone className="h-4 w-4" /> Llamar al 911
+                </a>
+              </div>
+            </section>
+          )}
+
+          {esFarmacia && misMeds.length > 0 && (
             <section>
               <SeccionTitulo>Tus medicamentos</SeccionTitulo>
               <div className="flex flex-wrap gap-2">
@@ -1164,11 +1282,15 @@ const FarmaciasView = (_: { key?: string }) => {
 
         {/* Columna derecha: resultados */}
         <section className="wide:pt-[clamp(44px,7vh,64px)]">
-          <DisponibilidadCadenas med={med} coords={coords} onUbicar={localizar} />
+          {esFarmacia && <DisponibilidadCadenas med={med} coords={coords} onUbicar={() => localizar('farmacia')} />}
 
-          {estado === 'inicio' && (
+          {estadoActual === 'inicio' && (
             <div className="rounded-[24px] border-2 border-dashed border-line p-8 text-center text-sm text-muted">
-              {med.length < 3 && <>Escribe o elige un medicamento para ver su precio y existencia. </>}Toca <b className="text-ink">Buscar farmacias cercanas</b> para ver todas las farmacias a tu alrededor.
+              {esFarmacia ? (
+                <>{med.length < 3 && <>Escribe o elige un medicamento para ver su precio y existencia. </>}Toca <b className="text-ink">Buscar farmacias cercanas</b> para ver todas las farmacias a tu alrededor.</>
+              ) : (
+                <>Toca <b className="text-ink">Buscar hospitales cercanos</b> para ver los hospitales y clínicas a tu alrededor, ordenados por distancia.</>
+              )}
             </div>
           )}
 
@@ -1178,70 +1300,52 @@ const FarmaciasView = (_: { key?: string }) => {
             </ul>
           )}
 
-          {(estado === 'sin-permiso' || estado === 'error') && (
+          {(estadoActual === 'sin-permiso' || estadoActual === 'error') && (
             <div className="rounded-[24px] bg-card p-6 text-center shadow-soft">
-              <p className="font-semibold text-ink">{estado === 'sin-permiso' ? 'No pudimos ver tu ubicación' : 'No pudimos cargar las farmacias'}</p>
-              <p className="mt-1 text-sm text-muted">{estado === 'sin-permiso' ? 'Permite el acceso a tu ubicación o busca directamente en el mapa.' : 'Revisa tu conexión e intenta de nuevo, o busca en el mapa.'}</p>
+              <p className="font-semibold text-ink">
+                {estadoActual === 'sin-permiso' ? 'No pudimos ver tu ubicación' : (esFarmacia ? 'No pudimos cargar las farmacias' : 'No pudimos cargar los hospitales')}
+              </p>
+              <p className="mt-1 text-sm text-muted">{estadoActual === 'sin-permiso' ? 'Permite el acceso a tu ubicación o busca directamente en el mapa.' : 'Revisa tu conexión e intenta de nuevo, o busca en el mapa.'}</p>
               <a href={mapsBusqueda} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex items-center gap-2 rounded-full bg-brand-soft px-5 py-2.5 text-sm font-semibold text-brand-strong hover:bg-[#dde6fc]">
                 <MapPin className="h-4 w-4" /> Abrir en Google Maps
               </a>
             </div>
           )}
 
-          {estado === 'listo' && (
+          {estadoActual === 'listo' && (
             <>
-              <SeccionTitulo>{farmacias.length ? `${farmacias.length} farmacias cerca de ti` : 'Farmacias cerca de ti'}</SeccionTitulo>
+              <SeccionTitulo>
+                {esFarmacia
+                  ? (resultados.length ? `${resultados.length} farmacias cerca de ti` : 'Farmacias cerca de ti')
+                  : (resultados.length ? `${resultados.length} hospitales y clínicas cerca` : 'Hospitales cerca de ti')}
+              </SeccionTitulo>
               <p className="mb-4 flex items-start gap-2 rounded-2xl bg-sun-soft px-4 py-3 text-sm text-ink">
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-sun-strong" />
-                <span>No conocemos la existencia de cada tienda. {med ? <>Llama y pregunta por <b>{med}</b> antes de ir.</> : 'Llama antes de ir para confirmar que lo tengan.'}</span>
+                <span>
+                  {esFarmacia
+                    ? <>No conocemos la existencia de cada tienda. {med ? <>Llama y pregunta por <b>{med}</b> antes de ir.</> : 'Llama antes de ir para confirmar que lo tengan.'}</>
+                    : <>Los datos vienen del mapa abierto y pueden estar incompletos. <b>Llama antes de ir</b> para confirmar que atiendan lo que necesitas.</>}
+                </span>
               </p>
-              {farmacias.length === 0 ? (
+              {resultados.length === 0 ? (
                 <div className="rounded-[24px] bg-card p-6 text-center shadow-soft">
-                  <p className="text-sm text-muted">No encontramos farmacias registradas cerca.</p>
+                  <p className="text-sm text-muted">{esFarmacia ? 'No encontramos farmacias registradas cerca.' : 'No encontramos hospitales registrados cerca.'}</p>
                   <a href={mapsBusqueda} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-brand">Buscar en Google Maps <ChevronRight className="h-4 w-4" /></a>
                 </div>
               ) : (
                 <ul className="space-y-3">
-                  {farmacias.map((f, i) => {
-                    const tono = toneFor(f.nombre);
-                    return (
-                      <motion.li
-                        key={f.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.25, delay: Math.min(i, 8) * 0.03, ease: [0.2, 0.8, 0.2, 1] }}
-                        className="rounded-[22px] bg-card p-4 shadow-soft"
-                      >
-                        <div className="flex items-start gap-3">
-                          <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${tono.tile}`}><Store className="h-5 w-5" /></span>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate font-semibold text-ink">{f.nombre}</p>
-                            {f.direccion && <p className="truncate text-sm text-muted">{f.direccion}</p>}
-                            {f.horario && <p className={`mt-1 truncate text-xs ${f.horario.startsWith('Abierta 24') ? 'font-semibold text-mint-strong' : 'text-muted'}`}>{f.horario}</p>}
-                          </div>
-                          <span className="shrink-0 rounded-full bg-canvas px-2.5 py-1 text-xs font-semibold text-muted tabular-nums">{formatDistancia(f.distancia)}</span>
-                        </div>
-                        <div className="mt-3 flex gap-2 pl-14">
-                          <a
-                            href={`https://www.google.com/maps/dir/?api=1&destination=${f.lat},${f.lon}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-strong"
-                          >
-                            <Navigation className="h-4 w-4" /> Cómo llegar
-                          </a>
-                          {f.telefono && (
-                            <a href={`tel:${f.telefono.replace(/[^\d+]/g, '')}`} className="flex items-center gap-1.5 rounded-full bg-brand-soft px-4 py-2 text-sm font-semibold text-brand-strong hover:bg-[#dde6fc]">
-                              <Phone className="h-4 w-4" /> Llamar
-                            </a>
-                          )}
-                        </div>
-                      </motion.li>
-                    );
-                  })}
+                  {resultados.map((l, i) => (
+                    <TarjetaLugar
+                      key={l.id}
+                      lugar={l}
+                      indice={i}
+                      Icono={esFarmacia ? Store : Stethoscope}
+                      acento={!esFarmacia && l.etiquetas.includes('Urgencias')}
+                    />
+                  ))}
                 </ul>
               )}
-              <p className="mt-4 text-center text-xs text-faint">Datos de farmacias: © colaboradores de OpenStreetMap</p>
+              <p className="mt-4 text-center text-xs text-faint">Datos de lugares: © colaboradores de OpenStreetMap</p>
             </>
           )}
         </section>
@@ -3163,7 +3267,7 @@ export default function App() {
         {view === 'calendar' && <CalendarView key="calendar" setView={setView} requestPermission={requestPermission} notificationPermission={notificationPermission} toggleComplete={toggleComplete} />}
         {view === 'gallery' && <GalleryView key="gallery" setView={setView} onOpen={(id) => { setRecetaId(id); setView('receta'); }} />}
         {view === 'receta' && <RecetaView key="receta" id={recetaId} setView={setView} />}
-        {view === 'farmacias' && <FarmaciasView key="farmacias" />}
+        {view === 'busqueda' && <BusquedaView key="busqueda" />}
         {view === 'perfil' && (
           <PerfilView
             key="perfil"
@@ -3187,7 +3291,7 @@ export default function App() {
             {([
               { v: 'dashboard', label: 'Inicio', Icon: Home, activo: ['dashboard'] },
               { v: 'calendar', label: 'Tomas', Icon: CalendarDays, activo: ['calendar', 'gallery', 'receta'] },
-              { v: 'farmacias', label: 'Farmacias', Icon: Store, activo: ['farmacias'] },
+              { v: 'busqueda', label: 'Búsqueda', Icon: Search, activo: ['busqueda'] },
               { v: 'perfil', label: 'Perfil', Icon: User, activo: ['perfil'] },
             ] as const).map(({ v, label, Icon, activo }) => {
               const on = (activo as readonly string[]).includes(view);
