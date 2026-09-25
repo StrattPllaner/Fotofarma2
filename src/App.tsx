@@ -588,7 +588,7 @@ const DashboardView = ({ setView, reminders, onToggle, userName, onChat }: Dashb
 
         {/* Acceso rápido */}
         <section className="wide:pt-[clamp(44px,7vh,64px)]">
-          {CHAT_DISPONIBLE && (
+          {(
             <button
               onClick={onChat}
               className="tile mb-6 flex w-full items-center gap-4 rounded-[24px] bg-card px-5 py-4 text-left shadow-soft hover:bg-lav-soft/40"
@@ -598,7 +598,9 @@ const DashboardView = ({ setView, reminders, onToggle, userName, onChat }: Dashb
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block font-semibold text-ink">Pregunta sobre tus medicinas</span>
-                <span className="block text-sm text-muted">Cómo tomarlas, qué contienen y sus efectos</span>
+                <span className="block text-sm text-muted">
+                  {CHAT_DISPONIBLE ? 'Cómo tomarlas, qué contienen y sus efectos' : 'Próximamente: falta conectar el asistente'}
+                </span>
               </span>
               <ChevronRight className="h-5 w-5 shrink-0 text-faint" />
             </button>

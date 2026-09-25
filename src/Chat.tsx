@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { X, Send, ShieldAlert, Loader2, Sparkle } from 'lucide-react';
-import { CHAT_URL, LIMITES_CHAT, AVISO_CHAT, ERRORES_CHAT, sugerenciasChat } from './chatConfig';
+import { CHAT_URL, CHAT_DISPONIBLE, LIMITES_CHAT, AVISO_CHAT, ERRORES_CHAT, sugerenciasChat } from './chatConfig';
 
 export interface MedicamentoChat { nombre: string; dosis?: string; hora?: string }
 interface Mensaje { rol: 'yo' | 'bot'; texto: string }
@@ -65,6 +65,7 @@ export const Chat = ({ medicamentos, onClose }: { medicamentos: MedicamentoChat[
     const limpio = pregunta.trim().slice(0, LIMITES_CHAT.caracteresPorMensaje);
     if (!limpio || enviando) return;
 
+    if (!CHAT_DISPONIBLE) { setError(ERRORES_CHAT.sin_llave); return; }
     if (!navigator.onLine) { setError(ERRORES_CHAT.sin_conexion); return; }
     if (!dentroDelLimite()) { setError(ERRORES_CHAT.demasiadas); return; }
 
@@ -159,6 +160,16 @@ export const Chat = ({ medicamentos, onClose }: { medicamentos: MedicamentoChat[
           <span>{AVISO_CHAT}</span>
         </p>
 
+        {!CHAT_DISPONIBLE && (
+          <p className="flex items-start gap-2 border-b border-line bg-lav-soft px-5 py-3 text-[13px] leading-snug text-ink">
+            <Sparkle className="mt-0.5 h-4 w-4 shrink-0 text-lav" />
+            <span>
+              <b>Así se va a ver el asistente.</b> Todavía no está conectado, así que no puede
+              responder: falta publicar el intermediario que guarda la llave.
+            </span>
+          </p>
+        )}
+
         {/* Conversación */}
         <div className="flex-1 overflow-y-auto px-5 py-5">
           {mensajes.length === 0 && (
@@ -221,12 +232,13 @@ export const Chat = ({ medicamentos, onClose }: { medicamentos: MedicamentoChat[
               maxLength={LIMITES_CHAT.caracteresPorMensaje}
               onChange={(e) => setTexto(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); preguntar(texto); } }}
-              placeholder="Pregunta sobre un medicamento…"
+              disabled={!CHAT_DISPONIBLE}
+              placeholder={CHAT_DISPONIBLE ? 'Pregunta sobre un medicamento…' : 'Todavía no está conectado'}
               className="max-h-28 min-h-[46px] flex-1 resize-none rounded-2xl border border-line bg-canvas px-4 py-3 text-base text-ink outline-none transition-colors placeholder:text-faint focus:border-brand focus:bg-card"
             />
             <button
               type="submit"
-              disabled={!texto.trim() || enviando}
+              disabled={!texto.trim() || enviando || !CHAT_DISPONIBLE}
               aria-label="Enviar pregunta"
               className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-2xl bg-brand text-white hover:bg-brand-strong disabled:opacity-40"
             >
@@ -234,7 +246,9 @@ export const Chat = ({ medicamentos, onClose }: { medicamentos: MedicamentoChat[
             </button>
           </div>
           <p className="mt-1.5 px-1 text-[11px] text-faint">
-            Esta conversación no se guarda{restantes < 100 ? ` · te quedan ${restantes} caracteres` : ''}
+            {CHAT_DISPONIBLE
+              ? <>Esta conversación no se guarda{restantes < 100 ? ` · te quedan ${restantes} caracteres` : ''}</>
+              : <>Vista previa · sin conectar</>}
           </p>
         </form>
       </motion.div>
