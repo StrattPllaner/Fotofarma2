@@ -356,6 +356,88 @@ interface DashboardProps {
   key?: string;
 }
 
+// --- Acomodo de horarios -----------------------------------------------------
+// La receta dice «cada 8 horas», pero a qué hora exactamente lo decide la persona.
+// Estas funciones arman las opciones que la app propone en la pantalla de revisión.
+
+const aMinutos = (hora: string) => {
+  const [h, m] = hora.split(':').map(Number);
+  return (h * 60 + m) % 1440;
+};
+
+const aHora = (minutos: number) => {
+  const t = ((minutos % 1440) + 1440) % 1440;
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+};
+
+/** Reparte las tomas a lo largo de las 24 horas, empezando a la hora dada. */
+const repartirDesde = (inicio: string, cantidad: number) => {
+  const paso = Math.round(1440 / Math.max(cantidad, 1));
+  return Array.from({ length: cantidad }, (_, i) => aHora(aMinutos(inicio) + paso * i));
+};
+
+/** Reparte las tomas solo entre las 8 de la mañana y las 10 de la noche. */
+const repartirDespierto = (cantidad: number) => {
+  if (cantidad <= 1) return ['08:00'];
+  const inicio = 8 * 60, fin = 22 * 60;
+  const paso = (fin - inicio) / (cantidad - 1);
+  return Array.from({ length: cantidad }, (_, i) => aHora(Math.round(inicio + paso * i)));
+};
+
+/** La hora en curso, redondeada al siguiente cuarto. */
+const proximoCuarto = () => {
+  const d = new Date();
+  d.setMinutes(Math.ceil((d.getMinutes() + 1) / 15) * 15, 0, 0);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+
+const HORARIOS_DE_COMIDA: Record<number, string[]> = {
+  1: ['08:00'],
+  2: ['08:00', '20:00'],
+  3: ['08:00', '14:00', '21:00'],
+  4: ['07:00', '13:00', '18:00', '22:00'],
+};
+
+interface OpcionHorario { id: string; etiqueta: string; detalle: string; horas: string[] }
+
+/** Las opciones que se le ofrecen a la persona para acomodar sus tomas. */
+const opcionesDeHorario = (cantidad: number, inicioDelDia = '08:00'): OpcionHorario[] => {
+  const crudas: OpcionHorario[] = [
+    {
+      id: 'dia',
+      etiqueta: 'Desde que empieza mi día',
+      detalle: `Primera toma a las ${formatHora(inicioDelDia)}`,
+      horas: repartirDesde(inicioDelDia, cantidad),
+    },
+    {
+      id: 'ahora',
+      etiqueta: 'Empezando ahora',
+      detalle: 'La primera, en cuanto guardes',
+      horas: repartirDesde(proximoCuarto(), cantidad),
+    },
+    {
+      id: 'comidas',
+      etiqueta: 'Con mis comidas',
+      detalle: cantidad >= 3 ? 'Desayuno, comida y cena' : 'A las horas de comer',
+      horas: HORARIOS_DE_COMIDA[cantidad] || repartirDespierto(cantidad),
+    },
+    {
+      id: 'despierto',
+      etiqueta: 'Sin despertarme de noche',
+      detalle: 'Todo entre 8 a. m. y 10 p. m.',
+      horas: repartirDespierto(cantidad),
+    },
+  ];
+  // Quitar las que dan exactamente el mismo horario
+  const vistas = new Set<string>();
+  return crudas.filter(o => {
+    const clave = o.horas.join('|');
+    if (vistas.has(clave)) return false;
+    vistas.add(clave);
+    return true;
+  });
+};
+
 const AlarmOverlay = ({ med, onConfirm, onStop }: { med: Medication, onConfirm: () => void, onStop: () => void }) => {
   return (
     <motion.div 
@@ -2787,9 +2869,54 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
                     </div>
                   )}
 
+                  {/* Acomodo del horario: la app propone, la persona decide */}
+                  {med.times?.length > 0 && (() => {
+                    const opciones = opcionesDeHorario(med.times.length, userSettings?.dayStartTime || '08:00');
+                    const actual = med.times.join('|');
+                    return (
+                      <div className="space-y-2 rounded-2xl bg-card p-3 shadow-soft">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-faint">¿Cómo lo acomodamos?</p>
+                          <span className="text-[10px] font-semibold text-muted">
+                            {med.times.length === 1 ? '1 toma al día' : `${med.times.length} tomas al día`}
+                          </span>
+                        </div>
+                        <p className="text-[11px] leading-snug text-muted">
+                          La receta dice «{med.frequency}». Elige un acomodo o ajusta las horas tú mismo abajo.
+                        </p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {opciones.map(o => {
+                            const elegida = o.horas.join('|') === actual;
+                            return (
+                              <button
+                                key={o.id}
+                                onClick={() => {
+                                  const nuevos = [...results];
+                                  nuevos[idx] = { ...nuevos[idx], times: [...o.horas] };
+                                  setResults(nuevos);
+                                }}
+                                aria-pressed={elegida}
+                                className={`rounded-xl border p-2.5 text-left transition-colors ${elegida ? 'border-brand bg-brand-soft' : 'border-line bg-canvas hover:border-brand-tint'}`}
+                              >
+                                <span className={`flex items-center gap-1.5 text-[11px] font-bold leading-tight ${elegida ? 'text-brand-strong' : 'text-ink'}`}>
+                                  {elegida && <Check className="h-3 w-3 shrink-0" />}
+                                  {o.etiqueta}
+                                </span>
+                                <span className="mt-0.5 block text-[10px] leading-tight text-muted">{o.detalle}</span>
+                                <span className="mt-1 block text-[10px] font-semibold tabular-nums text-brand">
+                                  {o.horas.map(h => formatHora(h).replace(/^0/, '').replace(' AM', ' am').replace(' PM', ' pm')).join(' · ')}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {/* Edición de Horarios Individuales */}
                   <div className="space-y-2">
-                    <p className="text-[10px] font-bold text-faint uppercase tracking-wider">Horas de las tomas</p>
+                    <p className="text-[10px] font-bold text-faint uppercase tracking-wider">O acomódalas tú</p>
                     <div className="flex flex-wrap gap-2">
                       {med.times?.map((time: string, timeIdx: number) => (
                         <div key={timeIdx} className="relative group">
