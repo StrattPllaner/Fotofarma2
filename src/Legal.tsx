@@ -10,8 +10,8 @@
 import { useState, type ReactNode } from 'react';
 import { ShieldCheck, Check } from 'lucide-react';
 
-export const TERMINOS_VERSION = '1.0';
-export const TERMINOS_FECHA = '24 de septiembre de 2026';
+export const TERMINOS_VERSION = '1.1';
+export const TERMINOS_FECHA = '25 de septiembre de 2026';
 
 // TODO (para el responsable del proyecto): sustituir por la razón social, el domicilio fiscal
 // y el correo de contacto reales antes de cualquier uso comercial o presentación formal.
@@ -89,6 +89,9 @@ export const TextoLegal = () => (
         lo que indicó el profesional de la salud.</L>
       <L>La revisión de interacciones entre medicamentos busca casos conocidos, es orientativa y
         <b> no cubre todas las interacciones posibles</b>.</L>
+      <L>El <b>asistente de medicamentos</b> da información general y orientativa: no diagnostica, no
+        indica dosis personalizadas y no sustituye a tu médico ni a tu farmacéutico. Ante una
+        emergencia, llama al 911.</L>
     </ul>
 
     <H>5. Tu responsabilidad al usarla</H>
@@ -199,7 +202,8 @@ export const TextoLegal = () => (
       <L><b>Datos de salud (sensibles):</b> la fotografía de tu receta, los medicamentos, dosis,
         frecuencias, horarios y el registro de tomas y hábitos.</L>
       <L><b>Datos de identificación opcionales:</b> el nombre y la edad que tú decidas escribir.</L>
-      <L><b>Ubicación aproximada:</b> solo en el momento en que tocas «buscar farmacias cercanas».</L>
+      <L><b>Ubicación aproximada:</b> solo en el momento en que tocas «buscar farmacias cercanas» o «buscar hospitales cercanos».</L>
+      <L><b>Lo que escribes en el asistente de medicamentos</b> y los nombres de tus medicamentos guardados, únicamente mientras dura esa consulta.</L>
       <L>Todos estos datos se guardan <b>en el almacenamiento de tu propio dispositivo</b>. No los
         recibimos, no los alojamos en un servidor nuestro y no podemos consultarlos.</L>
     </ul>
@@ -217,9 +221,17 @@ export const TextoLegal = () => (
       Para leer la receta, la <b>imagen que tomas se envía al proveedor del modelo de inteligencia
       artificial</b> (Google, a través de su interfaz de programación), únicamente durante esa
       consulta y con la finalidad de extraer los datos del medicamento. Ese envío se rige además por
-      las políticas de dicho proveedor. La búsqueda de farmacias envía tus coordenadas aproximadas al
-      servicio de mapas abierto para obtener los resultados. Fuera de esos dos casos, tus datos no
-      salen del dispositivo.
+      las políticas de dicho proveedor.
+    </P>
+    <P>
+      Si usas el <b>asistente de medicamentos</b>, tu pregunta y los nombres, dosis y horarios de los
+      medicamentos que tienes guardados se envían al mismo proveedor para generar la respuesta.
+      <b>Las conversaciones no se guardan</b>: no se almacenan en tu dispositivo, no se guardan en
+      ningún servidor nuestro y no quedan en registros. Al cerrar la ventana, desaparecen.
+    </P>
+    <P>
+      La búsqueda de farmacias y hospitales envía tus coordenadas aproximadas al servicio de mapas
+      abierto para obtener los resultados. Fuera de esos casos, tus datos no salen del dispositivo.
     </P>
 
     <H>Consentimiento expreso para datos sensibles</H>

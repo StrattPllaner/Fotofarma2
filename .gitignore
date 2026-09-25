@@ -6,3 +6,11 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# secretos locales del worker
+.dev.vars
+proxy/.dev.vars
+
+# estado local de wrangler
+.wrangler/
+proxy/.wrangler/

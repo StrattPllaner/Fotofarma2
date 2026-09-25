@@ -54,6 +54,8 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { PuertaTerminos, ConsentimientoIA, TextoLegal, TERMINOS_VERSION } from './Legal';
+import { Chat } from './Chat';
+import { CHAT_DISPONIBLE, IA_URL } from './chatConfig';
 import {
   auth,
   db,
@@ -143,7 +145,27 @@ const getGeminiClient = () => {
 
 // Con esta llave, generateContent (sin streaming) responde 404; streamGenerateContent sí funciona.
 // Por eso pedimos la respuesta en streaming y juntamos los pedazos de texto.
+// La dirección del intermediario (Cloudflare Worker) vive en src/chatConfig.ts. Si está
+// configurada, la IA se llama desde allá y la llave nunca viaja al navegador.
+
 const generarTexto = async (params: Parameters<GoogleGenAI['models']['generateContent']>[0]) => {
+  if (IA_URL) {
+    const r = await fetch(`${IA_URL}/ia`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: params.model, contents: params.contents, config: params.config }),
+    });
+    if (!r.ok) {
+      const clave = await r.json().then((j: any) => j?.error).catch(() => null);
+      throw new Error(clave === 'sin_llave'
+        ? 'El servicio de IA no está configurado todavía.'
+        : 'No pudimos leer la receta en este momento. Revisa tu conexión e intenta de nuevo.');
+    }
+    return (await r.json())?.texto || '';
+  }
+
+  // Modo antiguo (llave en el navegador): generateContent da 404 con esta llave, así que
+  // se pide en streaming y se juntan los pedazos.
   const stream = await getGeminiClient().models.generateContentStream(params);
   let texto = '';
   for await (const chunk of stream) texto += chunk.text ?? '';
@@ -320,6 +342,7 @@ const parseFrequency = (frequency: string, dayStartTime: string = '08:00'): stri
 // --- Components ---
 
 interface DashboardProps {
+  onChat: () => void;
   setView: (v: View) => void;
   user: any;
   reminders: Medication[];
@@ -503,7 +526,7 @@ const SeccionTitulo = ({ children }: { children: ReactNode }) => (
   <h2 className="mb-3 px-1 text-xs font-semibold uppercase tracking-[0.12em] text-muted">{children}</h2>
 );
 
-const DashboardView = ({ setView, reminders, onToggle, userName }: DashboardProps) => {
+const DashboardView = ({ setView, reminders, onToggle, userName, onChat }: DashboardProps) => {
   const total = reminders.length;
   const hechas = reminders.filter(r => r.completed).length;
   const pendientes = reminders.filter(r => !r.completed);
@@ -565,6 +588,22 @@ const DashboardView = ({ setView, reminders, onToggle, userName }: DashboardProp
 
         {/* Acceso rápido */}
         <section className="wide:pt-[clamp(44px,7vh,64px)]">
+          {CHAT_DISPONIBLE && (
+            <button
+              onClick={onChat}
+              className="tile mb-6 flex w-full items-center gap-4 rounded-[24px] bg-card px-5 py-4 text-left shadow-soft hover:bg-lav-soft/40"
+            >
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-lav-soft text-lav">
+                <Sparkle className="h-6 w-6" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold text-ink">Pregunta sobre tus medicinas</span>
+                <span className="block text-sm text-muted">Cómo tomarlas, qué contienen y sus efectos</span>
+              </span>
+              <ChevronRight className="h-5 w-5 shrink-0 text-faint" />
+            </button>
+          )}
+
           <SeccionTitulo>Acceso rápido</SeccionTitulo>
           <div className="grid grid-cols-2 gap-3">
             <button
@@ -2893,6 +2932,7 @@ export default function App() {
     }
   };
   const [capturedImage, setCapturedImage] = useState<string>('');
+  const [chatAbierto, setChatAbierto] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
   const [remindersToday, setRemindersToday] = useState<Medication[]>([]);
 
@@ -3227,6 +3267,16 @@ export default function App() {
       {faltaAceptar && !showSplash && <PuertaTerminos key="terminos" onAceptar={aceptarTerminos} />}
 
       <AnimatePresence>
+        {chatAbierto && (
+          <Chat
+            key="chat"
+            medicamentos={remindersToday.map(r => ({ nombre: r.name, dosis: r.dosage, hora: r.time }))}
+            onClose={() => setChatAbierto(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {activeAlarm && (
           <AlarmOverlay 
             med={activeAlarm} 
@@ -3253,6 +3303,7 @@ export default function App() {
             onInstall={handleInstall}
             onToggle={toggleComplete}
             userName={userSettings?.name}
+            onChat={() => setChatAbierto(true)}
           />
         )}
         {view === 'camera' && (
