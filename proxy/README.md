@@ -28,15 +28,28 @@ VITE_IA_URL=http://localhost:8787 npm run build && npm run preview
 
 ## Desplegar
 
+Un solo comando desde la raíz del proyecto:
+
 ```bash
-npx wrangler login                    # una sola vez, abre el navegador
-cd proxy && npx wrangler deploy       # imprime la URL del worker
-npx wrangler secret put GEMINI_API_KEY   # pega la llave cuando la pida
+bash proxy/desplegar.sh
 ```
 
-Después, en GitHub: Settings → Secrets and variables → Actions → **Variables** → New variable,
-con nombre `VITE_IA_URL` y la URL que imprimió el deploy. Con eso el chatbot queda vivo y la
-llave sale del navegador; entonces ya puedes borrar el secreto `VITE_GEMINI_API_KEY`.
+Hace todo: entra a Cloudflare (abre el navegador), publica el worker, guarda la llave como
+secreto, escribe la dirección en `src/chatConfig.ts`, recompila, sube el cambio y comprueba
+que responda. Lo único manual es autorizar en el navegador y pegar la llave cuando la pida;
+la llave no se escribe en ningún archivo del proyecto.
+
+A mano, si prefieres:
+
+```bash
+npx wrangler login                        # una sola vez, abre el navegador
+cd proxy && npx wrangler deploy           # imprime la URL del worker
+npx wrangler secret put GEMINI_API_KEY    # pega la llave cuando la pida
+# y pon esa URL en URL_INTERMEDIARIO de src/chatConfig.ts
+```
+
+Con eso el chatbot queda vivo y la lectura de recetas deja de usar la llave del navegador:
+entonces ya puedes borrar el secreto `VITE_GEMINI_API_KEY` en GitHub.
 
 ---
 
