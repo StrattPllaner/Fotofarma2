@@ -56,6 +56,7 @@ import type { LucideIcon } from 'lucide-react';
 import { PuertaTerminos, ConsentimientoIA, TextoLegal, TERMINOS_VERSION } from './Legal';
 import { Chat } from './Chat';
 import { CHAT_DISPONIBLE, IA_URL } from './chatConfig';
+import { Robot } from './Robot';
 import {
   auth,
   db,
@@ -588,23 +589,43 @@ const DashboardView = ({ setView, reminders, onToggle, userName, onChat }: Dashb
 
         {/* Acceso rápido */}
         <section className="wide:pt-[clamp(44px,7vh,64px)]">
-          {(
-            <button
-              onClick={onChat}
-              className="tile mb-6 flex w-full items-center gap-4 rounded-[24px] bg-card px-5 py-4 text-left shadow-soft hover:bg-lav-soft/40"
+          <motion.button
+            onClick={onChat}
+            whileHover={{ y: -2 }}
+            whileTap={{ scale: 0.985 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+            className="mb-6 flex w-full items-center gap-4 overflow-hidden rounded-[24px] bg-card px-5 py-4 text-left shadow-soft hover:shadow-[0_18px_34px_-20px_rgb(20_40_110/0.55)]"
+          >
+            <span className="relative flex h-12 w-12 shrink-0 items-center justify-center">
+              {/* halo que late detrás del robot */}
+              <motion.span
+                aria-hidden="true"
+                className="absolute inset-0 rounded-2xl bg-lav-soft"
+                animate={{ scale: [1, 1.12, 1], opacity: [0.85, 0.45, 0.85] }}
+                transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+              />
+              <motion.span
+                className="relative"
+                animate={{ y: [0, -2.5, 0] }}
+                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+              >
+                <Robot className="h-9 w-9" animado />
+              </motion.span>
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold text-ink">Pregunta sobre tus medicinas</span>
+              <span className="block text-sm text-muted">
+                {CHAT_DISPONIBLE ? 'Cómo tomarlas, qué contienen y sus efectos' : 'Próximamente: falta conectar el asistente'}
+              </span>
+            </span>
+            <motion.span
+              aria-hidden="true"
+              animate={{ x: [0, 3, 0] }}
+              transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
             >
-              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-lav-soft text-lav">
-                <Sparkle className="h-6 w-6" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block font-semibold text-ink">Pregunta sobre tus medicinas</span>
-                <span className="block text-sm text-muted">
-                  {CHAT_DISPONIBLE ? 'Cómo tomarlas, qué contienen y sus efectos' : 'Próximamente: falta conectar el asistente'}
-                </span>
-              </span>
-              <ChevronRight className="h-5 w-5 shrink-0 text-faint" />
-            </button>
-          )}
+              <ChevronRight className="h-5 w-5 shrink-0 text-lav" />
+            </motion.span>
+          </motion.button>
 
           <SeccionTitulo>Acceso rápido</SeccionTitulo>
           <div className="grid grid-cols-2 gap-3">

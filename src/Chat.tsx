@@ -6,7 +6,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { X, Send, ShieldAlert, Loader2, Sparkle } from 'lucide-react';
+import { X, Send, ShieldAlert, Loader2 } from 'lucide-react';
+import { Robot } from './Robot';
 import { CHAT_URL, CHAT_DISPONIBLE, LIMITES_CHAT, AVISO_CHAT, ERRORES_CHAT, sugerenciasChat } from './chatConfig';
 
 export interface MedicamentoChat { nombre: string; dosis?: string; hora?: string }
@@ -142,9 +143,13 @@ export const Chat = ({ medicamentos, onClose }: { medicamentos: MedicamentoChat[
       >
         {/* Encabezado */}
         <div className="flex items-center gap-3 border-b border-line bg-card px-5 py-4">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-lav-soft text-lav">
-            <Sparkle className="h-5 w-5" />
-          </span>
+          <motion.span
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-lav-soft"
+            animate={enviando ? { scale: [1, 1.06, 1] } : { scale: 1 }}
+            transition={{ duration: 1.1, repeat: enviando ? Infinity : 0, ease: 'easeInOut' }}
+          >
+            <Robot className="h-8 w-8" animado />
+          </motion.span>
           <div className="min-w-0 flex-1">
             <p className="font-semibold text-ink">Asistente de medicamentos</p>
             <p className="truncate text-sm text-muted">Dudas de cómo tomarlos, qué contienen y sus efectos</p>
@@ -162,7 +167,7 @@ export const Chat = ({ medicamentos, onClose }: { medicamentos: MedicamentoChat[
 
         {!CHAT_DISPONIBLE && (
           <p className="flex items-start gap-2 border-b border-line bg-lav-soft px-5 py-3 text-[13px] leading-snug text-ink">
-            <Sparkle className="mt-0.5 h-4 w-4 shrink-0 text-lav" />
+            <Robot className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
               <b>Así se va a ver el asistente.</b> Todavía no está conectado, así que no puede
               responder: falta publicar el intermediario que guarda la llave.
@@ -194,7 +199,8 @@ export const Chat = ({ medicamentos, onClose }: { medicamentos: MedicamentoChat[
 
           <ul className="space-y-3" aria-live="polite" aria-atomic="false">
             {mensajes.map((m, i) => (
-              <li key={i} className={m.rol === 'yo' ? 'flex justify-end' : 'flex justify-start'}>
+              <li key={i} className={m.rol === 'yo' ? 'flex justify-end' : 'flex items-end justify-start gap-2'}>
+                {m.rol === 'bot' && <Robot className="mb-1 h-7 w-7 shrink-0" />}
                 <div
                   className={`max-w-[85%] whitespace-pre-wrap rounded-[20px] px-4 py-3 text-[15px] leading-relaxed ${
                     m.rol === 'yo' ? 'bg-brand text-white' : 'bg-card text-ink shadow-soft'
