@@ -10,7 +10,7 @@ export default class ErrorBoundary extends Component<{ children: ReactNode }, { 
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('FotoFarma se cayó:', error, info.componentStack);
+    console.error('FotoMed+ se cayó:', error, info.componentStack);
   }
 
   render() {

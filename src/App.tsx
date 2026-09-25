@@ -28,6 +28,8 @@ import {
   Pill,
   Sparkle,
   Clock3,
+  AlarmClock,
+  Sparkles,
   Settings2,
   ArrowLeft,
   History,
@@ -438,6 +440,142 @@ const opcionesDeHorario = (cantidad: number, inicioDelDia = '08:00'): OpcionHora
   });
 };
 
+/** Recorre todas las horas la misma cantidad de minutos (puede ser negativa). */
+const recorrerHoras = (horas: string[], minutos: number) => horas.map(h => aHora(aMinutos(h) + minutos));
+
+/** Mueve las horas para que la primera del día caiga en `inicio`, sin cambiar la separación entre tomas. */
+const empezarA = (horas: string[], inicio: string) => {
+  if (horas.length === 0) return horas;
+  const primera = Math.min(...horas.map(aMinutos));
+  return recorrerHoras(horas, aMinutos(inicio) - primera);
+};
+
+const horaCorta = (h: string) => formatHora(h).replace(/^0/, '').replace(' AM', ' am').replace(' PM', ' pm');
+
+/** Acomodo de las horas de UN medicamento: propuestas de un toque + ajuste a mano. */
+const EditorHoras = ({ horas, inicioDelDia, nota, onChange }: { horas: string[]; inicioDelDia: string; nota?: ReactNode; onChange: (h: string[]) => void }) => {
+  const opciones = horas.length > 0 ? opcionesDeHorario(horas.length, inicioDelDia) : [];
+  const actual = horas.join('|');
+  return (
+    <>
+      {opciones.length > 0 && (
+        <div className="space-y-2 rounded-2xl bg-card p-3 shadow-soft">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-faint">¿Cómo lo acomodamos?</p>
+            <span className="text-[10px] font-semibold text-muted">
+              {horas.length === 1 ? '1 toma al día' : `${horas.length} tomas al día`}
+            </span>
+          </div>
+          {nota && <p className="text-[11px] leading-snug text-muted">{nota}</p>}
+          <div className="grid grid-cols-2 gap-2">
+            {opciones.map(o => {
+              const elegida = o.horas.join('|') === actual;
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  onClick={() => onChange([...o.horas])}
+                  aria-pressed={elegida}
+                  className={`rounded-xl border p-2.5 text-left transition-colors ${elegida ? 'border-brand bg-brand-soft' : 'border-line bg-canvas hover:border-brand-tint'}`}
+                >
+                  <span className={`flex items-center gap-1.5 text-[11px] font-bold leading-tight ${elegida ? 'text-brand-strong' : 'text-ink'}`}>
+                    {elegida && <Check className="h-3 w-3 shrink-0" />}
+                    {o.etiqueta}
+                  </span>
+                  <span className="mt-0.5 block text-[10px] leading-tight text-muted">{o.detalle}</span>
+                  <span className="mt-1 block text-[10px] font-semibold tabular-nums text-brand">{o.horas.map(horaCorta).join(' · ')}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      <div className="space-y-2">
+        <p className="text-[10px] font-bold text-faint uppercase tracking-wider">O acomódalas tú</p>
+        <div className="flex flex-wrap gap-2">
+          {horas.map((hora, i) => (
+            <div key={i} className="relative group">
+              <input
+                type="time"
+                value={hora}
+                aria-label={`Hora de la toma ${i + 1}`}
+                onChange={(e) => { if (e.target.value) onChange(horas.map((h, j) => j === i ? e.target.value : h)); }}
+                className="bg-card border border-line rounded-xl px-2 py-1.5 text-sm font-medium text-brand focus:ring-2 focus:ring-brand outline-none"
+              />
+              <button
+                type="button"
+                aria-label={`Quitar la toma de las ${horaCorta(hora)}`}
+                onClick={() => onChange(horas.filter((_, j) => j !== i))}
+                className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-bad text-white rounded-full flex items-center justify-center text-[10px] shadow-sm hover:bg-bad"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            aria-label="Agregar una toma"
+            onClick={() => {
+              const ultima = horas[horas.length - 1];
+              onChange([...horas, ultima ? aHora(aMinutos(ultima) + 240) : inicioDelDia]);
+            }}
+            className="w-10 h-8 border-2 border-dashed border-line rounded-xl flex items-center justify-center text-faint hover:border-brand hover:text-brand transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </>
+  );
+};
+
+/** Controles que mueven las horas de TODOS los medicamentos a la vez. */
+const AjusteGeneral = ({ inicioDelDia, onRecorrer, onEmpezar }: { inicioDelDia: string; onRecorrer: (min: number) => void; onEmpezar: (hora: string) => void }) => {
+  const [inicio, setInicio] = useState(inicioDelDia);
+  const pasos = [-60, -30, 30, 60];
+  return (
+    <div className="space-y-3 rounded-2xl border border-brand-soft bg-brand-soft/60 p-4">
+      <div className="flex items-center gap-2">
+        <AlarmClock className="h-4 w-4 text-brand" />
+        <p className="text-sm font-bold text-ink">Todas las tomas</p>
+      </div>
+      <div>
+        <p className="mb-1.5 text-[11px] text-muted">Recorrer todos los horarios</p>
+        <div className="grid grid-cols-4 gap-2">
+          {pasos.map(p => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onRecorrer(p)}
+              className="rounded-xl bg-card py-2 text-xs font-bold tabular-nums text-brand-strong shadow-soft hover:bg-brand-soft"
+            >
+              {p < 0 ? '−' : '+'}{Math.abs(p) === 60 ? '1 h' : `${Math.abs(p)} min`}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-[11px] text-muted">Que todas empiecen a las</p>
+        <input
+          type="time"
+          value={inicio}
+          aria-label="Hora de la primera toma de cada medicina"
+          onChange={(e) => setInicio(e.target.value)}
+          className="rounded-xl border border-line bg-card px-2 py-1.5 text-sm font-medium text-brand outline-none focus:ring-2 focus:ring-brand"
+        />
+        <button
+          type="button"
+          disabled={!inicio}
+          onClick={() => onEmpezar(inicio)}
+          className="rounded-xl bg-brand px-3 py-2 text-xs font-bold text-white hover:bg-brand-strong disabled:opacity-40"
+        >
+          Aplicar
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const AlarmOverlay = ({ med, onConfirm, onStop }: { med: Medication, onConfirm: () => void, onStop: () => void }) => {
   return (
     <motion.div 
@@ -525,7 +663,7 @@ const SOLAPE = '-mt-[clamp(44px,7vh,64px)]'; // cuánto sube el contenido sobre 
 
 const LogoTile = () => (
   <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/95 shadow-sm">
-    <img src={`${import.meta.env.BASE_URL}marca.svg`} alt="FotoFarma" className="h-10 w-10" />
+    <img src={`${import.meta.env.BASE_URL}marca.svg`} alt="FotoMed+" className="h-10 w-10" />
   </span>
 );
 
@@ -623,7 +761,7 @@ const DashboardView = ({ setView, reminders, onToggle, userName, onChat }: Dashb
       transition={{ duration: 0.2 }}
       className="min-h-dvh bg-canvas pb-[calc(var(--nav-h)+28px)]"
     >
-      <Banda title="FotoFarma" right={<LogoTile />} />
+      <Banda title="FotoMed+" right={<LogoTile />} />
 
       <div className={`relative mx-auto grid max-w-5xl gap-[clamp(20px,3.5vh,32px)] ${PAD_X} ${SOLAPE} wide:grid-cols-2 wide:items-start wide:gap-8`}>
         {/* Saludo + anillos */}
@@ -671,42 +809,57 @@ const DashboardView = ({ setView, reminders, onToggle, userName, onChat }: Dashb
 
         {/* Acceso rápido */}
         <section className="wide:pt-[clamp(44px,7vh,64px)]">
+          {/* Acceso al asistente: toda la tarjeta se mueve para que se note que es IA */}
           <motion.button
             onClick={onChat}
             whileHover={{ y: -2 }}
             whileTap={{ scale: 0.985 }}
             transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-            className="mb-6 flex w-full items-center gap-4 overflow-hidden rounded-[24px] bg-card px-5 py-4 text-left shadow-soft hover:shadow-[0_18px_34px_-20px_rgb(20_40_110/0.55)]"
+            className="ia-borde mb-6 block w-full rounded-[24px] p-[2px] text-left shadow-soft hover:shadow-[0_18px_34px_-20px_rgb(110_90_230/0.6)]"
           >
-            <span className="relative flex h-12 w-12 shrink-0 items-center justify-center">
-              {/* halo que late detrás del robot */}
+            <span className="relative flex items-center gap-4 overflow-hidden rounded-[22px] bg-card px-5 py-4">
+              {/* luces que flotan dentro de la tarjeta */}
+              <span aria-hidden="true" className="ia-luz-1 pointer-events-none absolute -left-10 -top-12 h-32 w-32 rounded-full bg-lav/25 blur-2xl" />
+              <span aria-hidden="true" className="ia-luz-2 pointer-events-none absolute -bottom-14 right-4 h-32 w-40 rounded-full bg-brand/20 blur-2xl" />
+              <span aria-hidden="true" className="ia-destello pointer-events-none absolute inset-y-0 -left-1/3 w-1/3" />
+
+              <span className="relative flex h-12 w-12 shrink-0 items-center justify-center">
+                {/* halo que late detrás del robot */}
+                <motion.span
+                  aria-hidden="true"
+                  className="absolute inset-0 rounded-2xl bg-lav-soft"
+                  animate={{ scale: [1, 1.12, 1], opacity: [0.85, 0.45, 0.85] }}
+                  transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+                />
+                <motion.span
+                  className="relative"
+                  animate={{ y: [0, -2.5, 0] }}
+                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                >
+                  <Robot className="h-9 w-9" animado />
+                </motion.span>
+              </span>
+              <span className="relative min-w-0 flex-1">
+                <span className="flex items-center gap-2">
+                  <span className="min-w-0 truncate font-semibold text-ink">Pregunta sobre tus medicinas</span>
+                  <span className="ia-chip inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide text-white">
+                    <Sparkles className="ia-chispa h-3 w-3" /> IA
+                  </span>
+                </span>
+                <span className="block text-sm text-muted">
+                  {CHAT_DISPONIBLE ? 'Cómo tomarlas, qué contienen y sus efectos' : 'Próximamente: falta conectar el asistente'}
+                  <span aria-hidden="true" className="ia-puntos ml-1 inline-flex gap-0.5 align-middle"><i /><i /><i /></span>
+                </span>
+              </span>
               <motion.span
                 aria-hidden="true"
-                className="absolute inset-0 rounded-2xl bg-lav-soft"
-                animate={{ scale: [1, 1.12, 1], opacity: [0.85, 0.45, 0.85] }}
-                transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
-              />
-              <motion.span
                 className="relative"
-                animate={{ y: [0, -2.5, 0] }}
-                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                animate={{ x: [0, 3, 0] }}
+                transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
               >
-                <Robot className="h-9 w-9" animado />
+                <ChevronRight className="h-5 w-5 shrink-0 text-lav" />
               </motion.span>
             </span>
-            <span className="min-w-0 flex-1">
-              <span className="block font-semibold text-ink">Pregunta sobre tus medicinas</span>
-              <span className="block text-sm text-muted">
-                {CHAT_DISPONIBLE ? 'Cómo tomarlas, qué contienen y sus efectos' : 'Próximamente: falta conectar el asistente'}
-              </span>
-            </span>
-            <motion.span
-              aria-hidden="true"
-              animate={{ x: [0, 3, 0] }}
-              transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-            >
-              <ChevronRight className="h-5 w-5 shrink-0 text-lav" />
-            </motion.span>
           </motion.button>
 
           <SeccionTitulo>Acceso rápido</SeccionTitulo>
@@ -829,9 +982,10 @@ const GalleryView = ({ setView, onOpen }: GalleryViewProps) => {
   );
 };
 
-const RecetaView = ({ id, setView }: { id: string | null; setView: (v: View) => void; key?: string }) => {
+const RecetaView = ({ id, setView, inicioDelDia }: { id: string | null; setView: (v: View) => void; inicioDelDia: string; key?: string }) => {
   const [receta, setReceta] = useState<Prescription | null | undefined>(undefined);
   const [confirmar, setConfirmar] = useState(false);
+  const [horarios, setHorarios] = useState(false);
 
   useEffect(() => {
     if (!id) { setReceta(null); return; }
@@ -901,6 +1055,9 @@ const RecetaView = ({ id, setView }: { id: string | null; setView: (v: View) => 
                 ))}
               </ul>
               <div className="mt-6 space-y-3">
+                <button onClick={() => setHorarios(true)} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-soft py-4 font-semibold text-brand-strong hover:bg-brand-tint/40">
+                  <AlarmClock className="h-5 w-5" /> Cambiar horarios de las tomas
+                </button>
                 <button onClick={() => setView('calendar')} className="w-full rounded-2xl bg-brand py-4 font-semibold text-white shadow-[0_16px_30px_-16px_rgb(62_102_214/0.9)] hover:bg-brand-strong">
                   Ver en el calendario
                 </button>
@@ -919,6 +1076,9 @@ const RecetaView = ({ id, setView }: { id: string | null; setView: (v: View) => 
         title="¿Eliminar esta receta?"
         message="También se quitan sus tomas del calendario."
       />
+      <AnimatePresence>
+        {horarios && id && <HorariosSheet key="horarios" prescriptionId={id} inicioDelDia={inicioDelDia} onClose={() => setHorarios(false)} />}
+      </AnimatePresence>
     </motion.div>
   );
 };
@@ -1214,7 +1374,7 @@ const DisponibilidadCadenas = ({ med, coords, onUbicar }: { med: string; coords:
 
         {PROXY_URL && <CadenaTarjeta nombre="Farmacias Benavides" sitio="benavides.com.mx" carga={benavides} />}
       </div>
-      <p className="mt-3 text-xs text-faint">Precios y existencias de las tiendas en línea de cada cadena; en sucursal pueden variar. FotoFarma no vende medicamentos.</p>
+      <p className="mt-3 text-xs text-faint">Precios y existencias de las tiendas en línea de cada cadena; en sucursal pueden variar. FotoMed+ no vende medicamentos.</p>
     </section>
   );
 };
@@ -1714,7 +1874,7 @@ const Portada = ({ onStart }: { onStart: () => void; key?: string }) => {
       <div className="relative mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-6 pt-[max(24px,env(safe-area-inset-top))] pb-8 sm:px-10 lg:px-16">
         <header className="flex items-center gap-3 py-2">
           <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" className="h-10 w-10 rounded-xl" />
-          <span className="text-xl font-bold tracking-tight">FotoFarma</span>
+          <span className="text-xl font-bold tracking-tight">FotoMed+</span>
         </header>
 
         <main className="mx-auto grid w-full max-w-xl flex-1 content-center gap-10 py-10 lg:max-w-none lg:grid-cols-[1fr_1fr] lg:items-center lg:gap-20">
@@ -1758,7 +1918,7 @@ const Portada = ({ onStart }: { onStart: () => void; key?: string }) => {
                 <ArrowRight className="h-5 w-5 transition-transform duration-200 group-hover:translate-x-1" />
               </button>
               <p className="text-center text-sm text-muted lg:max-w-sm">
-                FotoFarma no sustituye a tu médico ni a tu farmacéutico.{' '}
+                FotoMed+ no sustituye a tu médico ni a tu farmacéutico.{' '}
                 <button onClick={() => setShowTerms(true)} className="font-medium text-ink underline underline-offset-2">Aviso legal</button>
               </p>
             </div>
@@ -1877,6 +2037,7 @@ interface CalendarViewProps {
   requestPermission: () => void;
   notificationPermission: NotificationPermission;
   toggleComplete: (med: Medication) => Promise<void>;
+  inicioDelDia: string;
   key?: string;
 }
 
@@ -1960,6 +2121,198 @@ const MedSheet = ({ draft, date, onClose }: { draft: Draft; date: string; onClos
         </div>
       </motion.form>
     </motion.div>
+  );
+};
+
+// --- Horarios de las alarmas: cambiar la hora de todas las tomas ya guardadas ---
+// Agrupa las tomas pendientes (de ahora en adelante) por medicamento, deja acomodar
+// sus horas y reprograma todas: las alarmas leen estas tomas, así que suenan a la nueva hora.
+
+interface GrupoTomas { clave: string; name: string; dosage: string; horas: string[]; original: string[] }
+
+/** Diferencia entre dos horas del reloj, tomando el camino corto (−12 h a +12 h). */
+const diferencia = (de: string, a: string) => {
+  const d = (((aMinutos(a) - aMinutos(de)) % 1440) + 1440) % 1440;
+  return d > 720 ? d - 1440 : d;
+};
+
+/**
+ * Empareja cada hora de antes con una nueva (misma cantidad) moviéndolas lo menos posible,
+ * y devuelve cuántos minutos se mueve cada una. Así «+1 h» mueve cada toma una hora aunque
+ * cruce la medianoche, en vez de perder la última.
+ */
+const emparejar = (antes: string[], nuevas: string[]) => {
+  const a = [...antes].sort(), n = [...nuevas].sort();
+  let mejor: number[] = [], costo = Infinity;
+  for (let k = 0; k < n.length; k++) {
+    const deltas = a.map((h, i) => diferencia(h, n[(i + k) % n.length]));
+    const c = deltas.reduce((s, d) => s + Math.abs(d), 0);
+    if (c < costo) { costo = c; mejor = deltas; }
+  }
+  return new Map(a.map((h, i) => [h, mejor[i]]));
+};
+
+/** Suma minutos a una fecha y hora locales. */
+const moverFechaHora = (fecha: string, hora: string, minutos: number) => {
+  const [y, m, d] = fecha.split('-').map(Number);
+  const dt = new Date(y, m - 1, d, 0, aMinutos(hora) + minutos);
+  return { date: getLocalDateString(dt), time: `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}` };
+};
+
+const HorariosSheet = ({ prescriptionId, inicioDelDia, onClose }: { prescriptionId?: string; inicioDelDia: string; onClose: () => void; key?: string }) => {
+  const [grupos, setGrupos] = useState<GrupoTomas[] | null>(null);
+  const [tomas, setTomas] = useState<Medication[]>([]);
+  const [guardando, setGuardando] = useState(false);
+
+  const ahora = () => {
+    const d = new Date();
+    return { hoy: getLocalDateString(d), hora: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` };
+  };
+  // Una toma "por venir": de mañana en adelante, o de hoy a una hora que todavía no llega
+  const porVenir = (t: Medication) => {
+    const { hoy, hora } = ahora();
+    return !t.completed && (t.date > hoy || (t.date === hoy && t.time > hora));
+  };
+  const claveDe = (t: Medication) => `${t.prescriptionId || ''}|${t.name}`;
+
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    (async () => {
+      const filtros = [where('uid', '==', auth.currentUser.uid)];
+      if (prescriptionId) filtros.push(where('prescriptionId', '==', prescriptionId));
+      const snap = await getDocs(query(collection(db, 'reminders'), ...filtros));
+      const todas = snap.docs.map(d => ({ id: d.id, ...d.data() } as Medication));
+      const { hoy } = ahora();
+      const vigentes = todas.filter(t => t.date >= hoy);
+      setTomas(vigentes);
+      // El horario de cada medicamento = las horas de su día más completo por venir
+      const porClave = new Map<string, Medication[]>();
+      vigentes.filter(porVenir).forEach(t => porClave.set(claveDe(t), [...(porClave.get(claveDe(t)) || []), t]));
+      const lista: GrupoTomas[] = [];
+      porClave.forEach((ts, clave) => {
+        const porDia = new Map<string, string[]>();
+        vigentes.filter(t => claveDe(t) === clave).forEach(t => porDia.set(t.date, [...(porDia.get(t.date) || []), t.time]));
+        const horas = [...porDia.values()].reduce((a, b) => (b.length > a.length ? b : a), []).slice().sort();
+        lista.push({ clave, name: ts[0].name, dosage: ts[0].dosage, horas: [...horas], original: [...horas] });
+      });
+      lista.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+      setGrupos(lista);
+    })().catch(error => handleFirestoreError(error, 'list', 'reminders'));
+  }, [prescriptionId]);
+
+  const cambiar = (clave: string, horas: string[]) =>
+    setGrupos(gs => gs && gs.map(g => g.clave === clave ? { ...g, horas } : g));
+
+  const cambiados = (grupos || []).filter(g => g.horas.length > 0 && [...g.horas].sort().join('|') !== g.original.join('|'));
+
+  const guardar = async () => {
+    if (!auth.currentUser || guardando || cambiados.length === 0) return;
+    setGuardando(true);
+    try {
+      const { hoy, hora } = ahora();
+      const batch = writeBatch(db);
+      for (const g of cambiados) {
+        const delGrupo = tomas.filter(t => claveDe(t) === g.clave);
+        const pendientes = delGrupo.filter(porVenir);
+        const nuevaToma = (base: Medication, date: string, time: string) => batch.set(doc(collection(db, 'reminders')), {
+          uid: auth.currentUser!.uid,
+          name: base.name,
+          dosage: base.dosage || '',
+          time,
+          date,
+          ...(base.endDate ? { endDate: base.endDate } : {}),
+          comments: base.comments || '',
+          completed: false,
+          ...(base.prescriptionId ? { prescriptionId: base.prescriptionId } : {}),
+        });
+
+        if (g.horas.length === g.original.length) {
+          // Mismas tomas al día: cada una se mueve lo que le toca, aunque cambie de día
+          const deltas = emparejar(g.original, g.horas);
+          const cercana = (hora: string) => g.original.reduce((a, b) => Math.abs(diferencia(hora, b)) < Math.abs(diferencia(hora, a)) ? b : a);
+          for (const t of pendientes) {
+            const delta = deltas.get(t.time) ?? deltas.get(cercana(t.time)) ?? 0;
+            if (delta === 0) continue;
+            const destino = moverFechaHora(t.date, t.time, delta);
+            batch.update(doc(db, 'reminders', t.id!), destino);
+          }
+          continue;
+        }
+
+        // Cambió cuántas tomas hay al día: se rehace cada día con las horas nuevas
+        const fechas = [...new Set<string>(pendientes.map(t => t.date))];
+        for (const fecha of fechas) {
+          const delDia = delGrupo.filter(t => t.date === fecha);
+          delDia.filter(porVenir).forEach(t => batch.delete(doc(db, 'reminders', t.id!)));
+          const quedan = new Set(delDia.filter(t => !porVenir(t)).map(t => t.time));
+          for (const h of [...new Set<string>(g.horas)]) {
+            if (fecha === hoy && h <= hora) continue; // hoy solo lo que aún no llega
+            if (quedan.has(h)) continue;
+            nuevaToma(delDia[0], fecha, h);
+          }
+        }
+      }
+      await batch.commit();
+      onClose();
+    } catch (error) {
+      handleFirestoreError(error, 'write', 'reminders');
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <Hoja title="Horarios de las alarmas" onClose={onClose}>
+      {grupos === null ? (
+        <div className="flex justify-center p-10"><Loader2 className="h-8 w-8 animate-spin text-brand" /></div>
+      ) : grupos.length === 0 ? (
+        <div className="rounded-2xl bg-canvas p-6 text-center">
+          <p className="font-semibold text-ink">No hay tomas por venir</p>
+          <p className="mt-1 text-sm text-muted">Cuando escanees una receta o agregues tomas, aquí podrás cambiar sus horarios.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <p className="text-sm leading-snug text-muted">
+            Cambia la hora de todas las tomas que faltan{prescriptionId ? ' de esta receta' : ''}. Las alarmas sonarán a la nueva hora; lo que ya pasó o ya tomaste no se mueve.
+          </p>
+          <AjusteGeneral
+            inicioDelDia={inicioDelDia}
+            onRecorrer={(min) => setGrupos(gs => gs && gs.map(g => ({ ...g, horas: recorrerHoras(g.horas, min) })))}
+            onEmpezar={(hora) => setGrupos(gs => gs && gs.map(g => ({ ...g, horas: empezarA(g.horas, hora) })))}
+          />
+          {grupos.map(g => {
+            const cambio = [...g.horas].sort().join('|') !== g.original.join('|');
+            return (
+              <div key={g.clave} className="space-y-3 rounded-2xl bg-canvas p-4">
+                <div className="flex items-center gap-3">
+                  <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${toneFor(g.name).tile}`}><Pill className="h-5 w-5" /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold text-ink">{g.name}</span>
+                    <span className="block truncate text-xs text-muted">
+                      {cambio ? <>Antes: {g.original.map(horaCorta).join(' · ')}</> : (g.dosage || 'Sin cambios')}
+                    </span>
+                  </span>
+                  {cambio && (
+                    <button type="button" onClick={() => cambiar(g.clave, [...g.original])} className="rounded-full px-2.5 py-1 text-xs font-semibold text-muted hover:bg-line">
+                      Deshacer
+                    </button>
+                  )}
+                </div>
+                <EditorHoras horas={g.horas} inicioDelDia={inicioDelDia} onChange={(h) => cambiar(g.clave, h)} />
+                {g.horas.length === 0 && <p className="text-xs font-semibold text-bad">Deja al menos una hora; para quitar la medicina bórrala desde su receta.</p>}
+              </div>
+            );
+          })}
+          <button
+            type="button"
+            onClick={guardar}
+            disabled={guardando || cambiados.length === 0}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand py-4 font-semibold text-white shadow-[0_12px_24px_-12px_rgb(62_102_214/0.8)] hover:bg-brand-strong disabled:opacity-40"
+          >
+            {guardando ? <><Loader2 className="h-5 w-5 animate-spin" /> Guardando…</> : cambiados.length === 0 ? 'Sin cambios' : `Guardar ${cambiados.length === 1 ? '1 medicina' : `${cambiados.length} medicinas`}`}
+          </button>
+        </div>
+      )}
+    </Hoja>
   );
 };
 
@@ -2426,8 +2779,9 @@ const HabitosSeccion = ({ date }: { date: string }) => {
   );
 };
 
-const CalendarView = ({ setView, requestPermission, notificationPermission, toggleComplete }: CalendarViewProps) => {
+const CalendarView = ({ setView, requestPermission, notificationPermission, toggleComplete, inicioDelDia }: CalendarViewProps) => {
   const [reminders, setReminders] = useState<Medication[]>([]);
+  const [horarios, setHorarios] = useState(false);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<Draft | null>(null);
   const todayStr = getLocalDateString(new Date());
@@ -2552,6 +2906,14 @@ const CalendarView = ({ setView, requestPermission, notificationPermission, togg
             </ul>
           </div>
         )}
+        <button onClick={() => setHorarios(true)} className="tile mt-5 flex w-full items-center gap-4 rounded-[22px] bg-card px-5 py-4 text-left shadow-soft">
+          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-soft text-brand"><AlarmClock className="h-5 w-5" /></span>
+          <span className="flex-1">
+            <span className="block font-semibold text-ink">Horarios de las alarmas</span>
+            <span className="block text-sm text-muted">Cambia la hora de todas tus tomas</span>
+          </span>
+          <ChevronRight className="h-5 w-5 text-faint" />
+        </button>
         <HabitosSeccion date={selectedDate} />
 
         <button onClick={() => setView('gallery')} className="tile mt-5 flex w-full items-center gap-4 rounded-[22px] bg-card px-5 py-4 text-left shadow-soft">
@@ -2573,6 +2935,7 @@ const CalendarView = ({ setView, requestPermission, notificationPermission, togg
 
       <AnimatePresence>
         {draft && <MedSheet key="sheet" draft={draft} date={selectedDate} onClose={() => setDraft(null)} />}
+        {horarios && <HorariosSheet key="horarios" inicioDelDia={inicioDelDia} onClose={() => setHorarios(false)} />}
       </AnimatePresence>
     </motion.div>
   );
@@ -2823,6 +3186,13 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
             </div>
             
             <div className="space-y-4 mb-8">
+              {results.length > 0 && (
+                <AjusteGeneral
+                  inicioDelDia={userSettings?.dayStartTime || '08:00'}
+                  onRecorrer={(min) => setResults(results.map(m => ({ ...m, times: recorrerHoras(m.times || [], min) })))}
+                  onEmpezar={(hora) => setResults(results.map(m => ({ ...m, times: empezarA(m.times || [], hora) })))}
+                />
+              )}
               {results.map((med, idx) => (
                 <div key={idx} className="p-4 bg-canvas rounded-2xl border border-canvas space-y-3">
                   <div className="flex items-center justify-between">
@@ -2870,93 +3240,16 @@ const PreviewView = ({ setView, capturedImage, userSettings }: PreviewViewProps)
                   )}
 
                   {/* Acomodo del horario: la app propone, la persona decide */}
-                  {med.times?.length > 0 && (() => {
-                    const opciones = opcionesDeHorario(med.times.length, userSettings?.dayStartTime || '08:00');
-                    const actual = med.times.join('|');
-                    return (
-                      <div className="space-y-2 rounded-2xl bg-card p-3 shadow-soft">
-                        <div className="flex items-baseline justify-between gap-2">
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-faint">¿Cómo lo acomodamos?</p>
-                          <span className="text-[10px] font-semibold text-muted">
-                            {med.times.length === 1 ? '1 toma al día' : `${med.times.length} tomas al día`}
-                          </span>
-                        </div>
-                        <p className="text-[11px] leading-snug text-muted">
-                          La receta dice «{med.frequency}». Elige un acomodo o ajusta las horas tú mismo abajo.
-                        </p>
-                        <div className="grid grid-cols-2 gap-2">
-                          {opciones.map(o => {
-                            const elegida = o.horas.join('|') === actual;
-                            return (
-                              <button
-                                key={o.id}
-                                onClick={() => {
-                                  const nuevos = [...results];
-                                  nuevos[idx] = { ...nuevos[idx], times: [...o.horas] };
-                                  setResults(nuevos);
-                                }}
-                                aria-pressed={elegida}
-                                className={`rounded-xl border p-2.5 text-left transition-colors ${elegida ? 'border-brand bg-brand-soft' : 'border-line bg-canvas hover:border-brand-tint'}`}
-                              >
-                                <span className={`flex items-center gap-1.5 text-[11px] font-bold leading-tight ${elegida ? 'text-brand-strong' : 'text-ink'}`}>
-                                  {elegida && <Check className="h-3 w-3 shrink-0" />}
-                                  {o.etiqueta}
-                                </span>
-                                <span className="mt-0.5 block text-[10px] leading-tight text-muted">{o.detalle}</span>
-                                <span className="mt-1 block text-[10px] font-semibold tabular-nums text-brand">
-                                  {o.horas.map(h => formatHora(h).replace(/^0/, '').replace(' AM', ' am').replace(' PM', ' pm')).join(' · ')}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Edición de Horarios Individuales */}
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-bold text-faint uppercase tracking-wider">O acomódalas tú</p>
-                    <div className="flex flex-wrap gap-2">
-                      {med.times?.map((time: string, timeIdx: number) => (
-                        <div key={timeIdx} className="relative group">
-                          <input 
-                            type="time" 
-                            value={time}
-                            onChange={(e) => {
-                              const newResults = [...results];
-                              newResults[idx].times[timeIdx] = e.target.value;
-                              setResults(newResults);
-                            }}
-                            className="bg-card border border-line rounded-xl px-2 py-1.5 text-sm font-medium text-brand focus:ring-2 focus:ring-brand outline-none"
-                          />
-                          <button 
-                            onClick={() => {
-                              const newResults = [...results];
-                              newResults[idx].times.splice(timeIdx, 1);
-                              setResults(newResults);
-                            }}
-                            className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-bad text-white rounded-full flex items-center justify-center text-[10px] shadow-sm hover:bg-bad"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                      <button 
-                        onClick={() => {
-                          const newResults = [...results];
-                          const lastTime = med.times[med.times.length - 1] || '08:00';
-                          const [h, m] = lastTime.split(':').map(Number);
-                          const nextH = (h + 4) % 24;
-                          newResults[idx].times.push(`${String(nextH).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
-                          setResults(newResults);
-                        }}
-                        className="w-10 h-8 border-2 border-dashed border-line rounded-xl flex items-center justify-center text-faint hover:border-brand hover:text-brand transition-colors"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
+                  <EditorHoras
+                    horas={med.times || []}
+                    inicioDelDia={userSettings?.dayStartTime || '08:00'}
+                    nota={<>La receta dice «{med.frequency}». Elige un acomodo o ajusta las horas tú mismo abajo.</>}
+                    onChange={(horas) => {
+                      const nuevos = [...results];
+                      nuevos[idx] = { ...nuevos[idx], times: horas };
+                      setResults(nuevos);
+                    }}
+                  />
                 </div>
               ))}
             </div>
@@ -3009,7 +3302,7 @@ const Splash = (_: { key?: string }) => (
     exit={{ opacity: 0, scale: 1.03 }}
     transition={{ duration: 0.4, ease: [0.2, 0.8, 0.2, 1] }}
     className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-canvas px-6 text-ink"
-    aria-label="Cargando FotoFarma"
+    aria-label="Cargando FotoMed+"
   >
     <motion.img
       src={`${import.meta.env.BASE_URL}logo.svg`}
@@ -3025,7 +3318,7 @@ const Splash = (_: { key?: string }) => (
       transition={{ duration: 0.45, delay: 0.3, ease: [0.2, 0.8, 0.2, 1] }}
       className="mt-[clamp(20px,4vmin,36px)] text-[clamp(2rem,6vmin,3.5rem)] font-bold tracking-tight"
     >
-      FotoFarma
+      FotoMed+
     </motion.h1>
     <motion.p
       initial={{ opacity: 0, y: 8 }}
@@ -3382,7 +3675,7 @@ export default function App() {
     alarmSound.current?.play().catch(() => {});
     
     // También enviamos notificación push
-    const title = "¡Prueba de FotoFarma!";
+    const title = "¡Prueba de FotoMed+!";
     const options = { 
       body: "Así llegará el aviso de tu medicina 💊",
       icon: `${import.meta.env.BASE_URL}logo.svg`,
@@ -3465,9 +3758,9 @@ export default function App() {
                 onCancelar={() => setView('calendar')}
               />
         )}
-        {view === 'calendar' && <CalendarView key="calendar" setView={setView} requestPermission={requestPermission} notificationPermission={notificationPermission} toggleComplete={toggleComplete} />}
+        {view === 'calendar' && <CalendarView key="calendar" setView={setView} requestPermission={requestPermission} notificationPermission={notificationPermission} toggleComplete={toggleComplete} inicioDelDia={userSettings?.dayStartTime || '08:00'} />}
         {view === 'gallery' && <GalleryView key="gallery" setView={setView} onOpen={(id) => { setRecetaId(id); setView('receta'); }} />}
-        {view === 'receta' && <RecetaView key="receta" id={recetaId} setView={setView} />}
+        {view === 'receta' && <RecetaView key="receta" id={recetaId} setView={setView} inicioDelDia={userSettings?.dayStartTime || '08:00'} />}
         {view === 'busqueda' && <BusquedaView key="busqueda" />}
         {view === 'perfil' && (
           <PerfilView

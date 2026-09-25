@@ -22,8 +22,9 @@ export const Robot = ({ className = '', animado = false }: { className?: string;
       <path d="M24 11V7" stroke="#8a79f0" strokeWidth="2.4" strokeLinecap="round" />
       <motion.circle
         cx="24" cy="5" r="2.8" fill="#3fc49b"
-        animate={mueve ? { opacity: [1, 0.35, 1], r: [2.8, 3.3, 2.8] } : undefined}
+        animate={mueve ? { opacity: [1, 0.35, 1], scale: [1, 1.18, 1] } : undefined}
         transition={mueve ? { duration: 1.8, repeat: Infinity, ease: 'easeInOut' } : undefined}
+        style={{ transformOrigin: '24px 5px' }}
       />
 
       {/* orejas */}

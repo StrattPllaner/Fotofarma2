@@ -1,11 +1,11 @@
-// Intermediario de FotoFarma para consultar disponibilidad en cadenas de farmacias.
+// Intermediario de FotoMed+ para consultar disponibilidad en cadenas de farmacias.
 // Solo lee catálogos y sucursales públicos de sus tiendas en línea; no vende nada.
 // Existe porque Similares y Benavides no permiten llamadas directas desde el navegador (CORS).
 // Despliegue: Cloudflare Workers (gratis) — ver proxy/README.md
 
 import { PROMPT_SISTEMA, contextoMedicamentos } from './chat-prompt.js';
 
-const UA = 'Mozilla/5.0 (FotoFarma; +https://strattpllaner.github.io/Fotofarma2/)';
+const UA = 'Mozilla/5.0 (FotoMed+; +https://strattpllaner.github.io/Fotofarma2/)';
 
 // --- Asistente de Medicamentos -------------------------------------------------
 // La llave de Gemini vive aquí, como secreto del Worker: nunca viaja al navegador.

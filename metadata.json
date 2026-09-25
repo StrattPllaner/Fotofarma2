@@ -1,5 +1,5 @@
 {
-  "name": "FotoFarma",
+  "name": "FotoMed+",
   "description": "Escanea tus recetas médicas y organiza tus recordatorios automáticamente.",
   "requestFramePermissions": ["camera"]
 }

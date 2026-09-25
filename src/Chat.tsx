@@ -1,4 +1,4 @@
-// Asistente de Medicamentos: ventana de chat de FotoFarma.
+// Asistente de Medicamentos: ventana de chat de FotoMed+.
 //
 // La conversación vive solo en memoria mientras la ventana está abierta: no se guarda
 // en el dispositivo ni en ningún servidor. La llave de la IA nunca pasa por aquí; se

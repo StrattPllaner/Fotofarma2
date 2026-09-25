@@ -1,4 +1,4 @@
-// Prompt de sistema del Asistente de Medicamentos de FotoFarma.
+// Prompt de sistema del Asistente de Medicamentos de FotoMed+.
 //
 // Este archivo existe para que se pueda editar el comportamiento del chatbot sin tocar
 // el código del Worker ni el de la app. Vive del lado del servidor (Cloudflare Worker),

@@ -1,4 +1,4 @@
-// Términos y condiciones + aviso de privacidad de FotoFarma.
+// Términos y condiciones + aviso de privacidad de FotoMed+.
 //
 // Redactados para el marco mexicano: Ley Federal de Protección de Datos Personales en Posesión
 // de los Particulares (los datos de salud son "sensibles" y necesitan consentimiento expreso),
@@ -15,7 +15,7 @@ export const TERMINOS_FECHA = '25 de septiembre de 2026';
 
 // TODO (para el responsable del proyecto): sustituir por la razón social, el domicilio fiscal
 // y el correo de contacto reales antes de cualquier uso comercial o presentación formal.
-export const RESPONSABLE = 'FotoFarma (proyecto desarrollado en México)';
+export const RESPONSABLE = 'FotoMed+ (proyecto desarrollado en México)';
 export const CONTACTO = 'https://github.com/StrattPllaner/Fotofarma2/issues';
 
 const H = ({ children }: { children: ReactNode }) => (
@@ -34,7 +34,7 @@ const L = ({ children }: { children: ReactNode }) => (
 export const TextoLegal = () => (
   <div>
     <div className="rounded-2xl bg-sun-soft p-4 text-sm leading-relaxed text-ink">
-      <b>Lo más importante en tres líneas:</b> FotoFarma te ayuda a organizar los medicamentos que
+      <b>Lo más importante en tres líneas:</b> FotoMed+ te ayuda a organizar los medicamentos que
       ya te recetó un profesional de la salud. <b>No es un dispositivo médico</b>, no diagnostica y
       puede equivocarse al leer una receta: siempre revisa lo que la app entendió. Tus datos se
       guardan en este dispositivo, no en un servidor nuestro.
@@ -48,15 +48,15 @@ export const TextoLegal = () => (
 
     <H>1. Quién ofrece la app</H>
     <P>
-      FotoFarma es una aplicación desarrollada y operada por {RESPONSABLE} (en adelante,
+      FotoMed+ es una aplicación desarrollada y operada por {RESPONSABLE} (en adelante,
       «nosotros»). Para cualquier duda, queja o solicitud relacionada con estos términos o con tus
       datos, puedes escribirnos por el canal de contacto publicado en el repositorio del proyecto:
       <span className="break-all"> {CONTACTO}</span>.
     </P>
 
-    <H>2. Qué es FotoFarma y qué no es</H>
+    <H>2. Qué es FotoMed+ y qué no es</H>
     <P>
-      FotoFarma es una <b>herramienta de apoyo para la adherencia al tratamiento</b>: toma la foto
+      FotoMed+ es una <b>herramienta de apoyo para la adherencia al tratamiento</b>: toma la foto
       de una receta, extrae los medicamentos con ayuda de inteligencia artificial, arma un
       calendario de tomas, te recuerda cada una y te muestra farmacias cercanas.
     </P>
@@ -71,7 +71,7 @@ export const TextoLegal = () => (
 
     <H>3. Aceptación y edad mínima</H>
     <P>
-      Para usar FotoFarma tienes que aceptar estos términos y el aviso de privacidad. Si no estás de
+      Para usar FotoMed+ tienes que aceptar estos términos y el aviso de privacidad. Si no estás de
       acuerdo, no uses la aplicación. La app está pensada para personas <b>mayores de 18 años</b>;
       si eres menor de edad, solo puedes usarla con el acompañamiento y el consentimiento de tu
       madre, padre o tutor, quien será responsable del uso que hagas de ella.
@@ -106,7 +106,7 @@ export const TextoLegal = () => (
 
     <H>6. Dónde se guardan tus datos y qué implica</H>
     <P>
-      FotoFarma no tiene servidores propios ni cuentas de usuario: tus recetas, tomas, hábitos y
+      FotoMed+ no tiene servidores propios ni cuentas de usuario: tus recetas, tomas, hábitos y
       ajustes se guardan <b>únicamente en el almacenamiento de este dispositivo</b>. En consecuencia:
     </P>
     <ul className="mb-2.5 list-disc pl-5">
@@ -135,7 +135,7 @@ export const TextoLegal = () => (
 
     <H>9. Costo</H>
     <P>
-      El uso de FotoFarma es <b>gratuito</b>. Si en el futuro se ofrecen funciones de pago, se
+      El uso de FotoMed+ es <b>gratuito</b>. Si en el futuro se ofrecen funciones de pago, se
       informará su precio, características y forma de contratación <b>antes</b> de cualquier cobro,
       conforme a la Ley Federal de Protección al Consumidor. Las funciones que hoy son gratuitas no
       se volverán de pago de forma retroactiva.
@@ -143,7 +143,7 @@ export const TextoLegal = () => (
 
     <H>10. Propiedad intelectual</H>
     <P>
-      El nombre, el logotipo y el diseño de FotoFarma nos pertenecen. El código de la aplicación es
+      El nombre, el logotipo y el diseño de FotoMed+ nos pertenecen. El código de la aplicación es
       público y puede consultarse en su repositorio, bajo la licencia que ahí se indique. El
       contenido que tú capturas —tus recetas y tus datos— es tuyo y se queda en tu dispositivo.
     </P>
@@ -350,7 +350,7 @@ export const PuertaTerminos = ({ onAceptar }: { onAceptar: (consienteIA: boolean
         <div className="mx-auto max-w-2xl space-y-3">
           <Casilla valor={terminos} alCambiar={setTerminos}>
             He leído y <b>acepto los términos y condiciones</b> y el aviso de privacidad. Entiendo que
-            FotoFarma es una herramienta de apoyo y que <b>no sustituye a un profesional de la salud</b>.
+            FotoMed+ es una herramienta de apoyo y que <b>no sustituye a un profesional de la salud</b>.
           </Casilla>
           <Casilla valor={salud} alCambiar={setSalud}>
             <b>Consiento</b> que la foto de mi receta se envíe al proveedor de inteligencia artificial

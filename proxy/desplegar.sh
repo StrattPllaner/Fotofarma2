@@ -17,7 +17,7 @@ WRANGLER="npx --yes wrangler@4"
 
 echo
 echo "───────────────────────────────────────────────"
-echo " FotoFarma · dejar vivo el asistente"
+echo " FotoMed+ · dejar vivo el asistente"
 echo "───────────────────────────────────────────────"
 echo
 

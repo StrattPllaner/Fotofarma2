@@ -9,7 +9,7 @@
   --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Outfit", ui-sans-serif, system-ui, sans-serif;
 
-  /* Paleta FotoFarma (de los bocetos): azul suave, lila, menta y naranja sobre lienzo azulado */
+  /* Paleta FotoMed+ (de los bocetos): azul suave, lila, menta y naranja sobre lienzo azulado */
   --color-canvas: #f3f6fd;     /* fondo general */
   --color-card: #ffffff;
   --color-line: #e4eaf6;       /* bordes y divisores */
@@ -127,3 +127,32 @@ button:focus-visible {
 @keyframes lava-b { 0%, 100% { transform: translate3d(0, 0, 0) scale(1.08); } 33% { transform: translate3d(34%, -30%, 0) scale(0.84); } 66% { transform: translate3d(12%, -10%, 0) scale(1.18); } }
 .lava-1 { animation: lava-a 14s ease-in-out infinite; will-change: transform; }
 .lava-2 { animation: lava-b 18s ease-in-out infinite; will-change: transform; }
+
+/* Tarjeta del asistente (IA): borde de colores que gira, luces que flotan,
+   un destello que cruza, chispas en la etiqueta y puntitos de "pensando" */
+@property --ia-giro { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+@keyframes ia-girar { to { --ia-giro: 360deg; } }
+.ia-borde {
+  background: conic-gradient(from var(--ia-giro), #8a79f0, #5b86f0, #3fc49b, #b9a8ff, #8a79f0);
+  animation: ia-girar 5s linear infinite;
+}
+@keyframes ia-flota-1 { 0%, 100% { transform: translate3d(0, 0, 0) scale(1); } 50% { transform: translate3d(60%, 30%, 0) scale(1.25); } }
+@keyframes ia-flota-2 { 0%, 100% { transform: translate3d(0, 0, 0) scale(1.1); } 50% { transform: translate3d(-70%, -25%, 0) scale(0.9); } }
+.ia-luz-1 { animation: ia-flota-1 7s ease-in-out infinite; }
+.ia-luz-2 { animation: ia-flota-2 9s ease-in-out infinite; }
+@keyframes ia-cruza { 0%, 55% { transform: translateX(0) skewX(-18deg); } 100% { transform: translateX(460%) skewX(-18deg); } }
+.ia-destello {
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.75), transparent);
+  animation: ia-cruza 4.5s ease-in-out infinite;
+}
+@keyframes ia-corre { to { background-position: 200% 0; } }
+.ia-chip {
+  background: linear-gradient(90deg, #8a79f0, #5b86f0, #3fc49b, #8a79f0) 0 0 / 200% 100%;
+  animation: ia-corre 3s linear infinite;
+}
+@keyframes ia-titila { 0%, 100% { transform: scale(1) rotate(0); opacity: 1; } 50% { transform: scale(0.7) rotate(25deg); opacity: 0.6; } }
+.ia-chispa { animation: ia-titila 1.6s ease-in-out infinite; }
+.ia-puntos i { width: 4px; height: 4px; border-radius: 9999px; background: #8a79f0; animation: ia-salta 1.2s ease-in-out infinite; }
+.ia-puntos i:nth-child(2) { animation-delay: 0.15s; background: #5b86f0; }
+.ia-puntos i:nth-child(3) { animation-delay: 0.3s; background: #3fc49b; }
+@keyframes ia-salta { 0%, 60%, 100% { transform: translateY(0); opacity: 0.5; } 30% { transform: translateY(-3px); opacity: 1; } }

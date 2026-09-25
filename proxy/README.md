@@ -1,4 +1,4 @@
-# Intermediario de FotoFarma (Cloudflare Worker)
+# Intermediario de FotoMed+ (Cloudflare Worker)
 
 Hace dos trabajos:
 
